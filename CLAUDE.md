@@ -26,6 +26,26 @@ No em-dashes anywhere in this repo's prose (`SKILL.md` files, docs, `README.md`,
 
 ## Agent skills
 
+### Issue tracker
+
+Track this fork's packaging and maintenance work in `nisavid/mattpocock-skills` GitHub Issues. Read `docs/agents/issue-tracker.md` before ticket operations.
+
 ### Triage labels
 
-Canonical names, unchanged. See `docs/agents/triage-labels.md`. Issues are judged against [`SCOPE.md`](./SCOPE.md).
+Canonical names, unchanged. See `docs/agents/triage-labels.md`. Use `SCOPE.md` for upstream skill changes; fork packaging and maintenance follow the fork operations guidance below.
+
+### Domain docs
+
+This repo has one domain context. Read `GLOSSARY.md` and relevant ADRs under `.agents/adr/`; see `docs/agents/domain.md`.
+
+## Fork operations
+
+This fork distributes Matt Pocock's promoted engineering and productivity skills. Preserve attribution, the MIT license, and upstream skill bytes. Keep `AGENTS.md` as a symlink to this file.
+
+Use `fork-ops` before upstream assessment, synchronization, or changes to fork operating policy. Read `.agents/fork-ops.toml` when present; when it is missing, prepare and review the initial configuration before dependent operations. Treat its capability report as evidence only for the named implemented operation.
+
+Complete authorized, reversible repo work autonomously, preserving unrelated changes. Use `checkpointing-and-publishing-git-work` for task-owned commits and publication, and `publishing-reviewable-prs` for pull requests. Review code and configuration with Tricritical before shipping; substantive changes require its `loop`, independent critics, and independent adjudication on the final revision. Ordinary documentation outside protected paths follows the lighter repository review policy.
+
+Stop for unresolved ownership, conflicts, failed required checks or reviews, unavailable authority, and consequential policy choices. Keep account, credential, permission, branch-protection, release, and publication changes within their specifically authorized scope.
+
+Capture reusable packaging and synchronization procedures through `capturing-agent-procedures`. A consumer loads the maintained procedure and verifies its reviewed revision and required evidence before dependent execution.
