@@ -1,0 +1,76 @@
+schema_version = "0.1"
+release_channels = []
+
+[repository]
+host = "github"
+owner = "nisavid"
+name = "mattpocock-skills"
+default_branch = "main"
+
+[authority]
+source_order = ["explicit-user-direction", "fork-ops-config", "repo-docs", "upstream-docs", "live-state"]
+upstream_canon = "Preserve upstream source bytes except expressly approved fork-local packaging and operating surfaces."
+inference_labeling = "Label inferred conclusions when direct evidence is unavailable."
+required_context_paths = ["CLAUDE.md", "docs/agents/issue-tracker.md", "docs/agents/domain.md"]
+
+[change_targets]
+default = "fork"
+upstream_contribution = "explicit-only"
+upstream_issues = "explicit-only"
+
+[[fork_remotes]]
+name = "origin"
+push = true
+url = "https://github.com/nisavid/mattpocock-skills"
+
+[[upstreams]]
+id = "mattpocock-skills"
+name = "skills"
+owner = "mattpocock"
+remote = "upstream"
+url = "https://github.com/mattpocock/skills.git"
+default_branch = "main"
+push = false
+
+[[upstream_tracks]]
+id = "upstream-main"
+upstream = "mattpocock-skills"
+ref = "refs/remotes/upstream/main"
+source_type = "upstream_ref"
+source = "refs/heads/main"
+owner_remote = "upstream"
+update_policy = "manual"
+sync_eligible = false
+notes = "Upstream main is available for inspection. Automatic sync awaits the approved merge policy and the qualified TypeSafe procedure."
+
+[[local_surfaces]]
+kind = "config"
+path = ".agents/fork-ops.toml"
+domain = "fork operations"
+portability_hint = "fork-specific"
+
+[[local_surfaces]]
+kind = "agent_instruction"
+path = "CLAUDE.md"
+domain = "fork operating guidance"
+notes = "Retain upstream guidance and the approved fork-specific additions."
+portability_hint = "fork-specific"
+
+[[local_surfaces]]
+kind = "agent_instruction"
+path = "AGENTS.md"
+domain = "agent instruction discovery"
+notes = "Retain the symlink to CLAUDE.md as the canonical instruction projection."
+portability_hint = "fork-specific"
+
+[[local_surfaces]]
+kind = "doc"
+path = "docs/agents/issue-tracker.md"
+domain = "fork work tracking"
+portability_hint = "fork-specific"
+
+[[local_surfaces]]
+kind = "doc"
+path = "docs/agents/domain.md"
+domain = "domain documentation discovery"
+portability_hint = "fork-specific"
