@@ -8,7 +8,7 @@
       "name": "mattpocock-skills",
       "source": {
         "source": "local",
-        "path": "./plugins/mattpocock-skills"
+        "path": "./"
       },
       "policy": {
         "installation": "AVAILABLE",

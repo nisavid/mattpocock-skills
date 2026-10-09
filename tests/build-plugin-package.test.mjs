@@ -22,31 +22,38 @@ function fixture(t) {
   put("package.json", JSON.stringify({ version: "1.3.1" }));
   put(".claude-plugin/plugin.json", JSON.stringify(manifest, null, 2) + "\n");
   put("LICENSE", "MIT attribution fixture\n");
+  put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:{source:"local",path:"./"}}]}));
+  put(".claude-plugin/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:"./"}]}));
   put("skills/engineering/tdd/SKILL.md", "---\nname: tdd\n---\n# TDD\n");
   put("skills/engineering/tdd/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n");
   put("skills/engineering/tdd/references/binary.bin", Buffer.from([0, 255, 13, 10]));
   put("skills/productivity/handoff/SKILL.md", "---\nname: handoff\ndisable-model-invocation: true\n---\n# Handoff\n");
+  put("skills/productivity/handoff/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n");
   put("skills/misc/secret-draft/SKILL.md", "Excluded draft\n");
   mkdirSync(join(root, "scripts"), { recursive: true });
   copyFileSync(join(repo, "scripts/build-plugin-package.mjs"), join(root, "scripts/build-plugin-package.mjs"));
   const run = (...args) => spawnSync(process.execPath, [join(root, "scripts/build-plugin-package.mjs"), ...args], { encoding: "utf8" });
-  return { root, put, run, manifest, output: join(root, "plugins/mattpocock-skills") };
+  return { root, put, run, manifest };
 }
 
-test("build delivers promoted skills at their original paths with unchanged bytes and native manifests", (t) => {
+test("build selects original promoted directories from the repository root without copying or changing source bytes", (t) => {
   const f = fixture(t);
+  const sources = snapshot(join(f.root, "skills"));
+  const claude = readFileSync(join(f.root, ".claude-plugin/plugin.json"));
+  const license = readFileSync(join(f.root, "LICENSE"));
   const result = f.run();
   assert.equal(result.status, 0, result.stderr);
-  for (const path of ["LICENSE", ".claude-plugin/plugin.json", "skills/engineering/tdd/SKILL.md", "skills/engineering/tdd/agents/openai.yaml", "skills/engineering/tdd/references/binary.bin", "skills/productivity/handoff/SKILL.md"]) {
-    assert.deepEqual(readFileSync(join(f.output, path)), readFileSync(join(f.root, path)), path);
-  }
-  assert.throws(() => readFileSync(join(f.output, "skills/misc/secret-draft/SKILL.md")), { code: "ENOENT" });
-  const codex = JSON.parse(readFileSync(join(f.output, ".codex-plugin/plugin.json")));
+  assert.deepEqual(snapshot(join(f.root, "skills")), sources);
+  assert.deepEqual(readFileSync(join(f.root, ".claude-plugin/plugin.json")), claude);
+  assert.deepEqual(readFileSync(join(f.root, "LICENSE")), license);
+  assert.throws(() => lstatSync(join(f.root, "plugins/mattpocock-skills")), { code: "ENOENT" });
+  const codex = JSON.parse(readFileSync(join(f.root, ".codex-plugin/plugin.json")));
   assert.deepEqual(codex.skills, f.manifest.skills);
   assert.equal(codex.name, "mattpocock-skills");
   assert.equal(codex.version, "1.3.1");
   assert.equal(codex.interface.displayName, "Skills for Real Engineers");
   assert.equal(codex.interface.developerName, "Matt Pocock");
+  assert.equal(readFileSync(join(f.root, "skills/misc/secret-draft/SKILL.md"), "utf8"), "Excluded draft\n");
 });
 
 function snapshot(root) {
@@ -60,42 +67,23 @@ function snapshot(root) {
   return entries;
 }
 
-test("check accepts a current package and reports missing, extra, or changed bytes without writing", (t) => {
+test("check detects native manifest drift without writing and rebuild repairs only that manifest", (t) => {
   const f = fixture(t);
   assert.equal(f.run().status, 0);
-  const current = snapshot(f.output);
+  const sources = snapshot(join(f.root, "skills"));
+  const current = snapshot(f.root);
   assert.equal(f.run("--check").status, 0);
-  assert.deepEqual(snapshot(f.output), current);
-  for (const drift of ["missing", "extra", "changed", "empty-directory", "source-changed"]) {
-    assert.equal(f.run().status, 0);
-    if (drift === "missing") rmSync(join(f.output, "LICENSE"));
-    if (drift === "extra") writeFileSync(join(f.output, "unpromoted.md"), "unexpected\n");
-    if (drift === "changed") writeFileSync(join(f.output, "skills/engineering/tdd/agents/openai.yaml"), "policy changed\n");
-    if (drift === "empty-directory") mkdirSync(join(f.output, "skills/misc"));
-    if (drift === "source-changed") f.put("skills/productivity/handoff/SKILL.md", "new upstream source\n");
-    const before = snapshot(f.output);
-    assert.notEqual(f.run("--check").status, 0, drift);
-    assert.deepEqual(snapshot(f.output), before, drift);
-  }
+  assert.deepEqual(snapshot(f.root), current);
+  f.put(".codex-plugin/plugin.json", '{"skills":"./skills"}');
+  const changed = snapshot(f.root);
+  assert.notEqual(f.run("--check").status, 0);
+  assert.deepEqual(snapshot(f.root), changed);
+  assert.equal(f.run().status, 0);
+  assert.deepEqual(snapshot(join(f.root, "skills")), sources);
+  assert.equal(f.run("--check").status, 0);
 });
 
-test("symlinks in inputs or the generated destination are rejected without touching their targets", async (t) => {
-  for (const path of ["LICENSE", ".claude-plugin", "skills", "skills/engineering/tdd/references/binary.bin", "plugins", "plugins/mattpocock-skills", "plugins/mattpocock-skills/LICENSE"]) await t.test(path, (t) => {
-    const f = fixture(t);
-    assert.equal(f.run().status, 0);
-    f.put("outside/sentinel", "preserve external bytes\n");
-    const isDir = lstatSync(join(f.root, path)).isDirectory();
-    rmSync(join(f.root, path), { recursive: true, force: true });
-    symlinkSync(join(f.root, isDir ? "outside" : "outside/sentinel"), join(f.root, path));
-    const before = snapshot(f.root);
-    for (const args of [[], ["--check"]]) {
-      assert.notEqual(f.run(...args).status, 0);
-      assert.deepEqual(snapshot(f.root), before);
-    }
-  });
-});
-
-test("invalid promoted inventory is rejected before replacing an existing package", async (t) => {
+test("invalid promoted inventory is rejected before changing the native manifest", async (t) => {
   const cases = {
     "omitted promoted skill": (f) => f.manifest.skills.pop(),
     "unlisted promoted skill": (f) => f.put("skills/engineering/new-skill/SKILL.md", "new\n"),
@@ -109,33 +97,17 @@ test("invalid promoted inventory is rejected before replacing an existing packag
   for (const [name, change] of Object.entries(cases)) await t.test(name, (t) => {
     const f = fixture(t);
     assert.equal(f.run().status, 0);
-    const before = snapshot(f.output);
     change(f);
     f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+    const before = snapshot(f.root);
     for (const args of [[], ["--check"]]) {
       assert.notEqual(f.run(...args).status, 0);
-      assert.deepEqual(snapshot(f.output), before);
+      assert.deepEqual(snapshot(f.root), before);
     }
   });
 });
 
-test("rebuilding repairs generated drift while preserving source and sibling packages", (t) => {
-  const f = fixture(t);
-  f.put("plugins/other-package/sentinel", "unrelated package\n");
-  const source = snapshot(join(f.root, "skills"));
-  const sibling = snapshot(join(f.root, "plugins/other-package"));
-  assert.equal(f.run().status, 0);
-  const expected = Object.fromEntries(Object.entries(snapshot(f.output)).map(([path, entry]) => [path, entry.bytes]));
-  writeFileSync(join(f.output, "LICENSE"), "stale\n");
-  writeFileSync(join(f.output, "extra.txt"), "remove stale generated file\n");
-  assert.equal(f.run().status, 0);
-  assert.deepEqual(Object.fromEntries(Object.entries(snapshot(f.output)).map(([path, entry]) => [path, entry.bytes])), expected);
-  assert.deepEqual(snapshot(join(f.root, "skills")), source);
-  assert.deepEqual(snapshot(join(f.root, "plugins/other-package")), sibling);
-  assert.equal(f.run("--check").status, 0);
-});
-
-test("check reports an absent package without creating it and rejects unknown options", (t) => {
+test("check reports an absent native manifest without creating it and rejects unknown options", (t) => {
   const f = fixture(t);
   const before = snapshot(f.root);
   assert.notEqual(f.run("--check").status, 0);
@@ -144,26 +116,51 @@ test("check reports an absent package without creating it and rejects unknown op
   assert.deepEqual(snapshot(f.root), before);
 });
 
-test("supporting scripts retain executable bits and check detects mode drift without changing files", (t) => {
+test("build preserves executable source bits and unrelated repository contents", (t) => {
   const f = fixture(t);
-  const path = "skills/engineering/tdd/scripts/check.sh";
-  f.put(path, "#!/bin/sh\nprintf 'check\\n'\n");
-  chmodSync(join(f.root, path), 0o755);
+  f.put("plugins/other-package/sentinel", "unrelated package\n");
+  f.put("skills/engineering/tdd/scripts/check.sh", "#!/bin/sh\nexit 0\n");
+  chmodSync(join(f.root, "skills/engineering/tdd/scripts/check.sh"), 0o755);
+  const source = snapshot(join(f.root, "skills"));
+  const unrelated = snapshot(join(f.root, "plugins"));
   assert.equal(f.run().status, 0);
-  assert.deepEqual(readFileSync(join(f.output, path)), readFileSync(join(f.root, path)));
-  assert.equal(lstatSync(join(f.output, path)).mode & 0o111, 0o111);
+  assert.deepEqual(snapshot(join(f.root, "skills")), source);
+  assert.deepEqual(snapshot(join(f.root, "plugins")), unrelated);
   assert.equal(f.run("--check").status, 0);
+});
 
-  chmodSync(join(f.output, path), 0o644);
-  const drifted = snapshot(f.output);
-  assert.notEqual(f.run("--check").status, 0);
-  assert.deepEqual(snapshot(f.output), drifted);
-  assert.equal(f.run().status, 0);
-  assert.equal(lstatSync(join(f.output, path)).mode & 0o111, 0o111);
+test("catalogs must resolve the native repository root and retain the plugin identity", async (t) => {
+  const cases = {
+    "Claude copied-tree routing": (f) => f.put(".claude-plugin/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:"./plugins/mattpocock-skills"}]})),
+    "Codex copied-tree routing": (f) => f.put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:{source:"local",path:"./plugins/mattpocock-skills"}}]})),
+    "changed plugin identity": (f) => f.put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"renamed",source:{source:"local",path:"./"}}]})),
+    "portable discovery override": (f) => f.put("plugin.json", JSON.stringify({name:"mattpocock-skills"})),
+  };
+  for (const [name, change] of Object.entries(cases)) await t.test(name, (t) => {
+    const f = fixture(t);
+    assert.equal(f.run().status, 0);
+    change(f);
+    const before = snapshot(f.root);
+    assert.notEqual(f.run("--check").status, 0);
+    assert.deepEqual(snapshot(f.root), before);
+  });
+});
 
-  chmodSync(join(f.root, path), 0o644);
-  assert.notEqual(f.run("--check").status, 0);
-  assert.equal(f.run().status, 0);
-  assert.equal(lstatSync(join(f.output, path)).mode & 0o111, 0);
-  assert.equal(f.run("--check").status, 0);
+test("recursive native roots reject hidden extra skills and symlinked source or output paths", async (t) => {
+  const cases = {
+    "nested skill": (f) => f.put("skills/engineering/tdd/references/hidden/SKILL.md", "extra skill\n"),
+    "source reference symlink": (f) => { rmSync(join(f.root, "skills/engineering/tdd/references/binary.bin")); symlinkSync(join(f.root, "LICENSE"), join(f.root, "skills/engineering/tdd/references/binary.bin")); },
+    "source bucket symlink": (f) => { rmSync(join(f.root, "skills/productivity"), {recursive:true}); symlinkSync(join(f.root, "skills/misc"), join(f.root, "skills/productivity")); },
+    "native manifest symlink": (f) => { rmSync(join(f.root, ".codex-plugin/plugin.json")); symlinkSync(join(f.root, "LICENSE"), join(f.root, ".codex-plugin/plugin.json")); },
+  };
+  for (const [name, change] of Object.entries(cases)) await t.test(name, (t) => {
+    const f = fixture(t);
+    assert.equal(f.run().status, 0);
+    change(f);
+    const before = snapshot(f.root);
+    for (const args of [[], ["--check"]]) {
+      assert.notEqual(f.run(...args).status, 0);
+      assert.deepEqual(snapshot(f.root), before);
+    }
+  });
 });

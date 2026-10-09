@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-import { chmodSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
-const output = join(repo, "plugins/mattpocock-skills");
+const outputPath = ".codex-plugin/plugin.json";
 const check = process.argv.includes("--check");
 if (process.argv.slice(2).some((arg) => arg !== "--check") || process.argv.slice(2).length > 1) throw new Error("Usage: node scripts/build-plugin-package.mjs [--check]");
 
@@ -24,7 +24,7 @@ function requirePath(path, directory, optional = false) {
   return true;
 }
 
-for (const path of [".claude-plugin/plugin.json", "package.json", "LICENSE"]) requirePath(path, false);
+for (const path of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", "package.json", "LICENSE"]) requirePath(path, false);
 for (const bucket of ["engineering", "productivity"]) requirePath(`skills/${bucket}`, true);
 const manifestBytes = readFileSync(join(repo, ".claude-plugin/plugin.json"));
 const manifest = JSON.parse(manifestBytes);
@@ -48,76 +48,56 @@ for (const bucket of ["engineering", "productivity"]) {
   }
 }
 if (promoted.size !== selected.size || [...promoted].some((path) => !selected.has(path))) throw new Error("Source manifest and promoted buckets disagree.");
-for (const path of selected) requirePath(`${path.slice(2)}/SKILL.md`, false);
-const files = new Map([
-  ["LICENSE", readFileSync(join(repo, "LICENSE"))],
-  [".claude-plugin/plugin.json", manifestBytes],
-  [".codex-plugin/plugin.json", Buffer.from(JSON.stringify({
-    ...manifest,
-    interface: {
-      displayName: "Skills for Real Engineers",
-      shortDescription: "Skills by Matt Pocock",
-      developerName: "Matt Pocock",
-      category: "Developer Tools",
-      capabilities: ["Interactive"],
-    },
-  }, null, 2) + "\n")],
-]);
-const directories = new Set([".claude-plugin", ".codex-plugin", "skills"]);
-
-function collect(path) {
-  directories.add(path);
+function validateSkillTree(path, root) {
   for (const entry of readdirSync(join(repo, path), { withFileTypes: true })) {
     const child = `${path}/${entry.name}`;
-    if (entry.isDirectory()) collect(child);
-    else if (entry.isFile()) files.set(child, readFileSync(join(repo, child)));
-    else throw new Error(`Unsupported source entry, including symlink: ${child}`);
+    if (entry.isDirectory()) validateSkillTree(child, root);
+    else if (!entry.isFile()) throw new Error(`Unsupported source entry, including symlink: ${child}`);
+    else if (entry.name === "SKILL.md" && path !== root) throw new Error(`Nested skill would expand native discovery: ${child}`);
   }
 }
-
-for (const path of manifest.skills) {
-  directories.add(dirname(path.slice(2)));
-  collect(path.slice(2));
+for (const path of selected) {
+  const root = path.slice(2);
+  requirePath(`${root}/SKILL.md`, false);
+  requirePath(`${root}/agents/openai.yaml`, false);
+  validateSkillTree(root, root);
 }
-const executableBits = new Map([...files.keys()].map((path) => [
-  path,
-  path === ".codex-plugin/plugin.json" ? 0 : lstatSync(join(repo, path)).mode & 0o111,
-]));
-const actual = new Map();
-const actualExecutableBits = new Map();
-const exists = requirePath("plugins/mattpocock-skills", true, true);
-if (exists) {
-  function inspect(path = "") {
-    for (const entry of readdirSync(join(output, path), { withFileTypes: true })) {
-      const child = path ? `${path}/${entry.name}` : entry.name;
-      if (!entry.isDirectory() && !entry.isFile()) throw new Error(`Unsupported generated entry, including symlink: ${child}`);
-      actual.set(child, entry.isDirectory() ? null : readFileSync(join(output, child)));
-      if (entry.isFile()) actualExecutableBits.set(child, lstatSync(join(output, child)).mode & 0o111);
-      if (entry.isDirectory()) inspect(child);
-    }
+for (const [path, source] of [
+  [".claude-plugin/marketplace.json", "claude"],
+  [".agents/plugins/marketplace.json", "codex"],
+]) {
+  const catalog = JSON.parse(readFileSync(join(repo, path)));
+  const plugins = catalog.plugins?.filter((plugin) => plugin.name === manifest.name);
+  const route = plugins?.[0]?.source;
+  if (plugins?.length !== 1 || (source === "claude" ? route !== "./" : route?.source !== "local" || route?.path !== "./")) {
+    throw new Error(`Marketplace must select the native repository root for ${manifest.name}: ${path}`);
   }
-  inspect();
 }
+try {
+  lstatSync(join(repo, "plugin.json"));
+  throw new Error("Root plugin.json would override native discovery. Use the native manifests.");
+} catch (error) {
+  if (error.code !== "ENOENT") throw error;
+}
+const expected = Buffer.from(JSON.stringify({
+  ...manifest,
+  interface: {
+    displayName: "Skills for Real Engineers",
+    shortDescription: "Skills by Matt Pocock",
+    developerName: "Matt Pocock",
+    category: "Developer Tools",
+    capabilities: ["Interactive"],
+  },
+}, null, 2) + "\n");
+const exists = requirePath(outputPath, false, true);
 if (check) {
-  const expected = new Map([...directories].map((path) => [path, null]).concat([...files]));
-  const drift = [];
-  for (const [path, bytes] of expected) {
-    if (!actual.has(path)) drift.push(`missing: ${path}`);
-    else if (bytes === null ? actual.get(path) !== null : !Buffer.isBuffer(actual.get(path)) || !bytes.equals(actual.get(path))) drift.push(`changed: ${path}`);
-    else if (bytes !== null && executableBits.get(path) !== actualExecutableBits.get(path)) drift.push(`executable bits changed: ${path}`);
-  }
-  for (const path of actual.keys()) if (!expected.has(path)) drift.push(`extra: ${path}`);
-  if (drift.length) {
-    console.error(drift.sort().join("\n"));
+  if (!exists || !readFileSync(join(repo, outputPath)).equals(expected)) {
+    console.error(`Native Codex manifest is missing or stale: ${outputPath}. Run npm run build-plugin-package.`);
     process.exit(1);
   }
-  console.log(`Package matches ${manifest.skills.length} promoted skills.`);
+  console.log(`Native manifests select ${manifest.skills.length} original promoted skill directories.`);
 } else {
-  rmSync(output, { recursive: true, force: true });
-  for (const path of [...directories].sort()) mkdirSync(join(output, path), { recursive: true });
-  for (const path of [...files.keys()].sort()) {
-    writeFileSync(join(output, path), files.get(path));
-    chmodSync(join(output, path), 0o644 | executableBits.get(path));
-  }
-  console.log(`Built ${manifest.skills.length} promoted skills in plugins/mattpocock-skills.`);
+  mkdirSync(join(repo, ".codex-plugin"), { recursive: true });
+  writeFileSync(join(repo, outputPath), expected);
+  console.log(`Updated ${outputPath} for ${manifest.skills.length} original promoted skill directories.`);
 }
