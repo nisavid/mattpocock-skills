@@ -8,7 +8,7 @@ Skills are organized into bucket folders under `skills/`:
 
 Every skill in `engineering/` or `productivity/` (the **promoted** buckets) must have a reference in the top-level `README.md` and an entry in `.claude-plugin/plugin.json`'s `skills` array (the Claude Code plugin ships exactly the promoted set). Skills in `misc/`, `in-progress/`, and `deprecated/` must not appear in either.
 
-Install commands are copied verbatim from [.agents/install-block.md](./.agents/install-block.md). `.claude-plugin/marketplace.json` makes the repo its own single-plugin marketplace (a fallback the install block explains, not the documented route). Run `claude plugin validate . --strict` after touching either manifest. Why a Claude plugin but not (yet) a Codex one lives in [.agents/adr/0002-ship-as-a-claude-code-plugin.md](./.agents/adr/0002-ship-as-a-claude-code-plugin.md).
+Install commands are copied verbatim from [.agents/install-block.md](./.agents/install-block.md). `.claude-plugin/marketplace.json` makes the repo its own single-plugin marketplace (a fallback the install block explains, not the documented route). For this fork's native manifest generation and package validation, follow [the packaging procedure](./docs/agents/plugin-packaging.md). The upstream distribution decision lives in [.agents/adr/0002-ship-as-a-claude-code-plugin.md](./.agents/adr/0002-ship-as-a-claude-code-plugin.md).
 
 Each skill entry in the top-level `README.md` must link the skill name to its `SKILL.md`.
 
@@ -49,6 +49,8 @@ Complete authorized, reversible repo work autonomously, preserving unrelated cha
 Stop for unresolved ownership, conflicts, failed required checks or reviews, unavailable authority, and consequential policy choices. Keep account, credential, permission, branch-protection, release, and publication changes within their specifically authorized scope.
 
 Capture reusable packaging and synchronization procedures through `capturing-agent-procedures`. A consumer loads the maintained procedure and verifies its reviewed revision and required evidence before dependent execution.
+
+Before generating the native manifest, checking package drift, changing marketplace routing, or consuming this fork's packaged skills, read [docs/agents/plugin-packaging.md](./docs/agents/plugin-packaging.md). Keep upstream skill sources authoritative; commit generated manifest changes together with their source or generator changes.
 
 ### Operating prerequisites
 

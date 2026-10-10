@@ -1,0 +1,48 @@
+name: Plugin package
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - run: npm run check-plugin-version
+      - run: npm run check-plugin-package
+
+  codex-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        codex-version: ["0.160.1", "latest"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install isolated Codex compatibility tool
+        env:
+          CODEX_VERSION: ${{ matrix.codex-version }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/codex-tool" --ignore-scripts --no-audit --no-fund --package-lock=false "@openai/codex@$CODEX_VERSION"
+          echo "CODEX_BIN=$RUNNER_TEMP/codex-tool/node_modules/.bin/codex" >> "$GITHUB_ENV"
+      - run: npm run check-plugin-package
+      - run: npm run test-codex-plugin
