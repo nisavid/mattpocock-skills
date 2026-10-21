@@ -51,7 +51,9 @@ _Avoid_: Client, buyer, account
 - **Ordering ↔ Billing**: Shared types for `CustomerId` and `Money`
 ```
 
-The skill infers which structure applies:
+Apply [the skill's destination checks](./SKILL.md#validate-destinations-before-writing) before creating or updating any glossary. The map describes candidate locations, not write authority. Reject unsafe entries rather than substituting another destination.
+
+The skill infers which structure applies, subject to those checks:
 
 - If `GLOSSARY-MAP.md` exists, read it to find contexts
 - If only a root `GLOSSARY.md` exists, single context

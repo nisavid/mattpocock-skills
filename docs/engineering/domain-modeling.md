@@ -23,10 +23,12 @@ Reach for it when the *words* are the problem:
 
 None up front. The skill writes into two places and creates both lazily:
 
-- **`GLOSSARY.md`** at the repo root. The skill creates it when you settle the first term. In a repo with a `GLOSSARY-MAP.md` at the root, terms go into the per-context `GLOSSARY.md` the map points at instead.
+- **`GLOSSARY.md`** at the repo root. The skill creates it when you settle the first term. In a repo with a `GLOSSARY-MAP.md` at the root, terms go into a validated per-context `GLOSSARY.md` instead. The map proposes a location; it cannot grant permission to write outside the repository or the relevant context.
 - **`docs/adr/`**. The skill creates it with the first ADR that clears the bar.
 
 Nothing needs to exist before you start, and the skill creates nothing in advance.
+
+For a new mapped glossary location, the skill shows you the validated path and asks for confirmation before creating it. Existing valid glossaries still update inline. It checks destinations and their ancestors before writing, refuses symlinks and other unsafe paths, and leaves the proposed text in the conversation if it cannot establish a safe destination. The same checks cover context-derived ADRs. These checks guide the agent; host filesystem confinement is needed when another process can replace paths during a write.
 
 ## Two artifacts, two bars
 

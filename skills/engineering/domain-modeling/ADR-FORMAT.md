@@ -2,7 +2,7 @@
 
 ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc.
 
-Create the `docs/adr/` directory lazily: only when the first ADR is needed.
+Apply [the skill's destination checks](./SKILL.md#validate-destinations-before-writing) before creating directories or writing an ADR, including when a map selects its context. Create the validated `docs/adr/` directory lazily: only when the first ADR is needed.
 
 ## Template
 
