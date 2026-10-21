@@ -59,4 +59,4 @@ The skill infers which structure applies, subject to those checks:
 - If only a root `GLOSSARY.md` exists, single context
 - If neither exists, create a root `GLOSSARY.md` lazily when the first term is resolved
 
-When multiple contexts exist, infer which one the current topic relates to. If unclear, ask.
+Establish the relevant context from the user's request or independently verified project structure, independently of the map. Use the root glossary when the task selects the repository root, even when a map exists. If the context is unclear, ask before writing.

@@ -22,7 +22,7 @@ The wayfinder split comes down to session count: `/grill-with-docs` for single-s
 
 ## Prerequisites
 
-The skill writes into your repo, so you need to be somewhere it is safe to write. It uses `domain-modeling`'s destination checks and establishes the repository root and context independently from the task and project structure. A `GLOSSARY-MAP.md` proposes locations; it cannot select or authorize a context.
+The skill writes into your repo, so you need to be somewhere it is safe to write. It uses `domain-modeling`'s destination checks: establish the repository root from the current task and working tree, and the context from the user's request or independently verified project structure, independently of the map. A `GLOSSARY-MAP.md` proposes locations; it cannot select or authorize a context.
 
 - For a task that selects the repository root, resolved terms go to root `GLOSSARY.md`.
 - For an independently established context, resolved terms go to that context's validated `GLOSSARY.md`.
