@@ -18,6 +18,8 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
 
+This flag controls discovery only. Selecting or explicitly naming a PR does not authorize checking out or executing its code in the maintainer environment. Follow the installed `triage` skill's verification boundary before checkout, dependency setup, or tests; without suitable isolation, review the diff and report execution as not run.
+
 When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
 
 - **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
