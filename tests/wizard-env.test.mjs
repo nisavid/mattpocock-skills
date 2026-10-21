@@ -564,6 +564,106 @@ test("a permission failure retaining ownership leaves the old file intact and re
   noStagingFiles(f.root);
 });
 
+test("Linux updates existing files when extended attributes are unsupported", { skip: process.platform !== "linux" }, async (t) => {
+  for (const code of ["ENOTSUP", "EOPNOTSUPP"]) await t.test(code, (t) => {
+    const f = fixture(t);
+    f.put(".env", "TOKEN='synthetic-before'\n");
+    chmodSync(join(f.root, ".env"), 0o640);
+    const before = statSync(join(f.root, ".env"));
+    const log = join(f.base, "xattr-list-calls.jsonl");
+    const env = pythonHarness(f, `
+import errno
+if sys.argv[3] == 'write':
+    def unsupported(fd):
+        with open(${JSON.stringify(log)}, 'a') as output:
+            output.write(json.dumps(os.fstat(fd).st_ino) + '\\n')
+        raise OSError(errno.${code}, 'synthetic-new-value')
+    os.listxattr = unsupported
+`);
+    const result = f.run(guardedWrite, { env });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /RESULT:0 WRITTEN:1/);
+    assert.equal(readFileSync(join(f.root, ".env"), "utf8"), "TOKEN='synthetic-new-value'\n");
+    const after = statSync(join(f.root, ".env"));
+    assert.notEqual(after.ino, before.ino);
+    assert.equal(after.mode, before.mode);
+    assert.equal(after.uid, before.uid);
+    assert.equal(after.gid, before.gid);
+    assert.deepEqual(readFileSync(log, "utf8").trim().split("\n").map(Number), [before.ino, after.ino, after.ino]);
+    noStagingFiles(f.root);
+  });
+});
+
+test("Linux xattr listing errors preserve the old file at every metadata phase", { skip: process.platform !== "linux" }, async (t) => {
+  for (const code of ["EACCES", "EIO"]) for (const phase of [1, 2, 3]) await t.test(`${code} at listing ${phase}`, (t) => {
+    const f = fixture(t);
+    f.put(".env", "TOKEN='synthetic-before'\n");
+    const before = snapshot(f.root);
+    const env = pythonHarness(f, `
+import errno
+if sys.argv[3] == 'write':
+    calls = 0
+    def fail_listing(fd):
+        global calls
+        calls += 1
+        if calls == ${phase}:
+            raise OSError(errno.${code}, 'synthetic-new-value')
+        return []
+    os.listxattr = fail_listing
+`);
+    assertRejectedWrite(f.run(guardedWrite, { env }));
+    assert.deepEqual(snapshot(f.root), before);
+    noStagingFiles(f.root);
+  });
+});
+
+test("Linux xattr read, copy, and cleanup errors fail before replacement", { skip: process.platform !== "linux" }, async (t) => {
+  for (const operation of ["getxattr", "setxattr", "removexattr"]) for (const code of ["ENOTSUP", "EIO"]) await t.test(`${operation} ${code}`, (t) => {
+    const f = fixture(t);
+    f.put(".env", "TOKEN='synthetic-before'\n");
+    const before = snapshot(f.root);
+    const env = pythonHarness(f, `
+import errno
+if sys.argv[3] == 'write':
+    source_inode = os.stat('.env', dir_fd=9).st_ino
+    def names(fd):
+        source = os.fstat(fd).st_ino == source_inode
+        return ['user.synthetic'] if ${operation === "removexattr" ? "not source" : "source"} else []
+    os.listxattr = names
+    os.getxattr = lambda *args: b'synthetic-attribute'
+    def fail_attribute(*args):
+        raise OSError(errno.${code}, 'synthetic-new-value')
+    os.${operation} = fail_attribute
+`);
+    assertRejectedWrite(f.run(guardedWrite, { env }));
+    assert.deepEqual(snapshot(f.root), before);
+    noStagingFiles(f.root);
+  });
+});
+
+test("Linux rejects an update when nonempty source attributes cannot be verified", { skip: process.platform !== "linux" }, (t) => {
+  const f = fixture(t);
+  f.put(".env", "TOKEN='synthetic-before'\n");
+  const before = snapshot(f.root);
+  const env = pythonHarness(f, `
+import errno
+if sys.argv[3] == 'write':
+    calls = 0
+    def names(fd):
+        global calls
+        calls += 1
+        if calls == 3:
+            raise OSError(errno.ENOTSUP, 'synthetic-new-value')
+        return ['user.synthetic'] if calls == 1 else []
+    os.listxattr = names
+    os.getxattr = lambda *args: b'synthetic-attribute'
+    os.setxattr = lambda *args: None
+`);
+  assertRejectedWrite(f.run(guardedWrite, { env }));
+  assert.deepEqual(snapshot(f.root), before);
+  noStagingFiles(f.root);
+});
+
 test("a leaf swapped to an outside symlink during preparation is refused without following it", (t) => {
   const f = fixture(t);
   const old = "TOKEN='synthetic-original-sentinel'\n";

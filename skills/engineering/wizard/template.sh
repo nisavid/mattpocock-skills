@@ -98,6 +98,7 @@ confirm() {
 # exported environment. All filesystem access starts at the pinned root.
 _env_file() {
   python3 -I - "$_WIZARD_ENV_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
+import errno
 import os
 import re
 import secrets
@@ -144,13 +145,20 @@ def retain_access(source, destination, original):
         if darwin_libc().fcopyfile(source, destination, None, 5) != 0:
             raise ValueError("could not retain environment access metadata")
     else:
-        attributes = {name: os.getxattr(source, name) for name in os.listxattr(source)}
-        for name in os.listxattr(destination):
+        def names(fd):
+            try:
+                return os.listxattr(fd)
+            except OSError as error:
+                if error.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+                    return []
+                raise
+        attributes = {name: os.getxattr(source, name) for name in names(source)}
+        for name in names(destination):
             if name not in attributes:
                 os.removexattr(destination, name)
         for name, value in attributes.items():
             os.setxattr(destination, name, value)
-        if {name: os.getxattr(destination, name) for name in os.listxattr(destination)} != attributes:
+        if {name: os.getxattr(destination, name) for name in names(destination)} != attributes:
             raise ValueError("could not retain environment access metadata")
     copied = os.fstat(destination)
     if (copied.st_uid, copied.st_gid, stat.S_IMODE(copied.st_mode)) != (
