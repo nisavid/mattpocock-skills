@@ -62,6 +62,13 @@ Be specific about edge cases and error conditions.
 - [ ] Specific, testable criterion 2
 - [ ] Specific, testable criterion 3
 
+**Verification evidence:**
+- **Tested revisions:** exact revision(s), or `not run`
+- **Reviewed commands:** exact commands, or `not run`
+- **Isolation / sandbox configuration:** configuration used, or why unavailable
+- **Results:** distinguish static conclusions from executed results
+- **Skipped checks:** checks not run and the reason for each
+
 **Out of scope:**
 - Thing that should NOT be changed or addressed in this issue
 - Adjacent feature that might seem related but is separate
