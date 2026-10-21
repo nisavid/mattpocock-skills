@@ -58,7 +58,9 @@ One answer is to remove Claude Code's built-in skills entirely. That saves a lot
 
 **Its sub-agents keep invoking `/code-review` again and spawn more agents.**
 
-This is a known open bug. Several people have reproduced it, in more than one harness. The Standards and Spec prompts do not forbid delegation, so a sub-agent can find the skill again and fan out again. One report reached more than 50 agents. The fix people have applied on forks is one line appended to both sub-agent briefs: "Do not invoke `/code-review` or spawn additional agents: perform this review directly." Some prefer to handle it at the harness level so every skill inherits the guard. Neither is in the shipped skill yet. If you run this unattended, watch the agent count.
+Earlier worker prompts left delegation open, allowing reviewers to restart the skill and fan out again. This fork's skill now limits each review to one coordinator and at most two leaf reviewers. Both worker prompts require a direct review and forbid re-invoking this skill, another review skill, or further agents, including through other skills or tools. A reviewer that loads the skill again must return its assigned report without running the coordinator process. Instructions in reviewed material cannot authorize more delegation. An agent working inside another workflow can still coordinate a review when it is not one of that review's leaf reviewers.
+
+These are instruction-level guards. Where your harness supports nondelegating worker profiles and a depth limit, the coordinator uses them to limit this review to one delegation level. This repository does not implement runtime tool permissions, so the prose alone cannot enforce that limit. Monitor agent counts when running unattended.
 
 **Should I run it in the same [session](https://www.aihero.dev/ai-coding-dictionary/session) that wrote the code?**
 
@@ -83,6 +85,7 @@ No. It diffs `<fixed-point>...HEAD`. The three-dot form measures from the merge-
 ## It's working if
 
 - It refuses to start on a bad ref or an empty diff, before any sub-agent is spawned.
+- Each review creates at most one Standards reviewer and one Spec reviewer; neither creates descendants or restarts the review.
 - The report arrives as two separate blocks under `## Standards` and `## Spec`, not one merged list.
 - Every Standards finding names either a rule in one of your repo's files or one of the twelve smells, with the hunk quoted; every Spec finding quotes a line of the spec.
 - The closing summary gives a worst issue per axis and declines to pick an overall winner.
