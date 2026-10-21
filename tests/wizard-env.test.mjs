@@ -302,20 +302,48 @@ test("existing extended attributes survive atomic replacement", (t) => {
   f.put(".env", "TOKEN='synthetic-before'\n");
   const destination = join(f.root, ".env");
   const attribute = process.platform === "darwin" ? "com.example.wizard-test" : "user.wizard_test";
-  const setup = spawnSync(python, ["-I", "-c", `
-import errno, os, sys
+  const xattrProbe = `
+import ctypes, errno, os, sys
+expected = b'synthetic-xattr-bytes\\x00\\xff'
+fd = os.open(sys.argv[1], os.O_RDONLY)
 try:
-    os.setxattr(sys.argv[1], sys.argv[2], b'synthetic-xattr-bytes\\x00\\xff')
+    if sys.platform == 'darwin':
+        libc = ctypes.CDLL(None, use_errno=True)
+        signature = [ctypes.c_int, ctypes.c_char_p, ctypes.c_void_p,
+                     ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
+        libc.fsetxattr.argtypes = signature
+        libc.fsetxattr.restype = ctypes.c_int
+        libc.fgetxattr.argtypes = signature
+        libc.fgetxattr.restype = ctypes.c_ssize_t
+        name = os.fsencode(sys.argv[2])
+        if sys.argv[3] == 'set':
+            value = ctypes.create_string_buffer(expected)
+            result = libc.fsetxattr(fd, name, value, len(expected), 0, 0)
+        else:
+            value = ctypes.create_string_buffer(len(expected))
+            result = libc.fgetxattr(fd, name, value, len(expected), 0, 0)
+        if result < 0:
+            number = ctypes.get_errno()
+            raise OSError(number, os.strerror(number))
+        if sys.argv[3] == 'get':
+            assert value.raw[:result] == expected
+    elif sys.argv[3] == 'set':
+        os.setxattr(fd, sys.argv[2], expected)
+    else:
+        assert os.getxattr(fd, sys.argv[2]) == expected
 except OSError as error:
-    if error.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
+    if sys.argv[3] == 'set' and error.errno in (errno.ENOTSUP, errno.EOPNOTSUPP):
         sys.exit(77)
     raise
-`, destination, attribute], { encoding: "utf8" });
+finally:
+    os.close(fd)
+`;
+  const setup = spawnSync(python, ["-I", "-c", xattrProbe, destination, attribute, "set"], { encoding: "utf8" });
   if (setup.status === 77) return t.skip("fixture filesystem does not support extended attributes");
   assert.equal(setup.status, 0, setup.stderr);
   const result = f.run("write_env TOKEN 'synthetic-after'");
   assert.equal(result.status, 0, result.stderr);
-  const check = spawnSync(python, ["-I", "-c", "import os, sys; assert os.getxattr(sys.argv[1], sys.argv[2]) == b'synthetic-xattr-bytes\\x00\\xff'", destination, attribute], { encoding: "utf8" });
+  const check = spawnSync(python, ["-I", "-c", xattrProbe, destination, attribute, "get"], { encoding: "utf8" });
   assert.equal(check.status, 0, check.stderr);
 });
 
@@ -372,8 +400,13 @@ def acl_error():
     return OSError(number, os.strerror(number))
 
 def acl_text(fd):
+    os.fstat(fd)
+    ctypes.set_errno(0)
     acl = acl_lib.acl_get_fd(fd)
     if not acl:
+        # Darwin reports an absent ACL as NULL/ENOENT on a valid descriptor.
+        if ctypes.get_errno() == errno.ENOENT:
+            return ''
         raise acl_error()
     text = None
     try:
