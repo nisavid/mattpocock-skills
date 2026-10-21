@@ -21,7 +21,9 @@ Don't reach for it to *decide* what to build; for that, [grill-with-docs](https:
 
 ## Prerequisites
 
-None to generate one. The wizard it writes runs on bash, and uses `gh` when a stage sets a GitHub secret or variable. If `gh` is missing or not authenticated, the run does not fail. That stage shows a warning, and the closing summary tells you what to set by hand.
+None to generate one. Run the generated wizard from your project directory using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the directory where you launched it. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers.
+
+The wizard uses `gh` when a stage sets a GitHub secret or variable. If `gh` is missing or not authenticated, the run does not fail. That stage shows a warning, and the closing summary tells you what to set by hand.
 
 ## Stages
 
@@ -53,6 +55,14 @@ The agent that writes a wizard never runs it end to end, because the script open
 | A setup path the next person on the repo will also need | Commit it and link it from the README, so they run the script instead of re-asking an agent |
 
 ## Common questions
+
+**Can `.env` be a symlink or live outside my project?**
+
+This fork rejects those destinations before reading saved defaults or writing values. `ENV_FILE` may name an existing subdirectory or an absolute path under the physical launch directory (`pwd -P`), but its components must not be symlinks or contain `..`. Directories, FIFOs, and other non-regular destinations are rejected too. Unsafe access stops the prompt or write instead of continuing with an empty default.
+
+New files are private (`0600`). Existing files retain their owner, group, mode, and access-control lists; an update fails if those permissions cannot be retained. Intended sharing remains possible, so you still need to check who can read an existing destination. Atomic replacement requires write access to its parent directory, changes the inode, and leaves other hard links pointing to the old contents. This fork supersedes upstream's deliberate symlink write-through behavior.
+
+These safeguards apply to newly generated scripts. Regenerate an older wizard to update its library. Atomic replacement avoids exposing a partially copied destination during an ordinary failed update; it does not promise recovery after power loss or protect against a hostile process moving an already-open project directory elsewhere. Keep the project directory under your control while running a wizard.
 
 **Do my API keys end up in the model's context?**
 

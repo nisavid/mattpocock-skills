@@ -24,6 +24,10 @@ TOTAL_STAGES=0
 
 _STAGE_INDEX=0
 ENV_FILE="${ENV_FILE:-.env}"
+# Pin the launch directory, even if a stage later changes directories. FD 9 is
+# reserved by the library and inherited by its descriptor-relative file helper.
+readonly _WIZARD_ENV_ROOT="$(pwd -P)"
+exec 9< .
 WRITTEN_ENV=()    # KEYs written to ENV_FILE this run
 WRITTEN_SECRET=() # secret NAMEs set this run
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
@@ -88,13 +92,205 @@ confirm() {
   [[ "$reply" =~ ^[Yy] ]]
 }
 
-# _existing KEY: current value of KEY in ENV_FILE, if any, with write_env's quoting undone.
+# _env_file MODE [KEY] is the shared boundary for saved values. Missing reads
+# return 1; unsafe destinations and I/O errors return 2. The explicit value
+# payload uses FD 3; Python source uses stdin. Python still inherits the shell's
+# exported environment. All filesystem access starts at the pinned root.
+_env_file() {
+  python3 -I - "$_WIZARD_ENV_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
+import os
+import re
+import secrets
+import stat
+import sys
+
+
+def identity(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid,
+            info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def darwin_libc():
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.acl_init.argtypes = [ctypes.c_int]
+    libc.acl_init.restype = ctypes.c_void_p
+    libc.acl_set_fd.argtypes = [ctypes.c_int, ctypes.c_void_p]
+    libc.acl_free.argtypes = [ctypes.c_void_p]
+    libc.fcopyfile.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+    return libc
+
+
+def private_directory(fd):
+    os.fchmod(fd, 0o700)
+    if sys.platform == "darwin":
+        libc = darwin_libc()
+        acl = libc.acl_init(0)
+        if not acl:
+            raise ValueError("could not allocate private staging permissions")
+        try:
+            if libc.acl_set_fd(fd, acl) != 0:
+                raise ValueError("could not remove inherited staging access")
+        finally:
+            libc.acl_free(acl)
+
+
+def retain_access(source, destination, original):
+    os.fchown(destination, original.st_uid, original.st_gid)
+    os.fchmod(destination, stat.S_IMODE(original.st_mode))
+    if sys.platform == "darwin":
+        # Apple's COPYFILE_ACL | COPYFILE_XATTR is 5. Copy access metadata
+        # through open descriptors, without copying data or immutable flags.
+        if darwin_libc().fcopyfile(source, destination, None, 5) != 0:
+            raise ValueError("could not retain environment access metadata")
+    else:
+        attributes = {name: os.getxattr(source, name) for name in os.listxattr(source)}
+        for name in os.listxattr(destination):
+            if name not in attributes:
+                os.removexattr(destination, name)
+        for name, value in attributes.items():
+            os.setxattr(destination, name, value)
+        if {name: os.getxattr(destination, name) for name in os.listxattr(destination)} != attributes:
+            raise ValueError("could not retain environment access metadata")
+    copied = os.fstat(destination)
+    if (copied.st_uid, copied.st_gid, stat.S_IMODE(copied.st_mode)) != (
+            original.st_uid, original.st_gid, stat.S_IMODE(original.st_mode)):
+        raise ValueError("could not retain environment access permissions")
+
+
+def access_env():
+    root, path, operation, key = sys.argv[1:]
+    if sys.platform not in ("linux", "darwin"):
+        raise ValueError("environment access requires Linux, macOS, or WSL")
+    if os.path.isabs(path):
+        prefix = root.rstrip("/") + "/"
+        if not path.startswith(prefix):
+            raise ValueError("ENV_FILE must stay inside the launch project")
+        path = path[len(prefix):]
+    parts = path.split("/")
+    if not parts[-1] or parts[-1] in (".", "..") or ".." in parts:
+        raise ValueError("ENV_FILE must name a file without parent traversal")
+    parts = [part for part in parts if part not in ("", ".")]
+    if operation != "check" and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        raise ValueError("invalid environment key")
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent = os.dup(9)
+    source = staging = None
+    staging_name = None
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, directory_flags, dir_fd=parent)
+            os.close(parent)
+            parent = child
+        leaf = parts[-1]
+        try:
+            source = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=parent)
+        except FileNotFoundError:
+            # A dangling symlink must not be confused with an absent file.
+            try:
+                os.stat(leaf, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ValueError("ENV_FILE changed while it was opened")
+        original = os.fstat(source) if source is not None else None
+        if original is not None and not stat.S_ISREG(original.st_mode):
+            raise ValueError("ENV_FILE must be a regular file")
+        if operation == "check":
+            return 0
+        content = b""
+        if source is not None:
+            with os.fdopen(os.dup(source), "rb") as stream:
+                content = stream.read()
+        lines = content.split(b"\n")
+        if lines[-1] == b"":
+            lines.pop()
+        prefix = key.encode("ascii") + b"="
+        if operation == "read":
+            matches = [line[len(prefix):] for line in lines if line.startswith(prefix)]
+            if not matches:
+                return 1
+            value = matches[-1]
+            if value.startswith(b"'") and value.endswith(b"'"):
+                value = value[1:-1].replace(b"'\\''", b"'")
+            sys.stdout.buffer.write(value)
+            return 0
+        if operation != "write":
+            raise ValueError("invalid environment operation")
+        with os.fdopen(3, "rb", closefd=False) as stream:
+            value = stream.read()
+        updated = b"".join(line + b"\n" for line in lines if not line.startswith(prefix))
+        updated += prefix + b"'" + value.replace(b"'", b"'\\''") + b"'\n"
+
+        # A private directory pins the rename source even when another reader
+        # can modify entries in the destination's parent directory.
+        name = ".wizard-env-" + secrets.token_hex(16)
+        os.mkdir(name, 0o700, dir_fd=parent)
+        staging_name = name
+        staging = os.open(staging_name, directory_flags, dir_fd=parent)
+        private_directory(staging)
+        info = os.fstat(staging)
+        if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            raise ValueError("could not create private environment staging")
+        replacement = os.open("value", os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                              0o600, dir_fd=staging)
+        with os.fdopen(replacement, "wb") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(updated)
+            stream.flush()
+            if original is not None:
+                retain_access(source, stream.fileno(), original)
+            os.fsync(stream.fileno())
+
+        current = os.stat(leaf, dir_fd=parent, follow_symlinks=False) if original else None
+        if original is not None and identity(current) != identity(original):
+            raise ValueError("ENV_FILE changed while the update was prepared")
+        if original is None:
+            try:
+                os.stat(leaf, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ValueError("ENV_FILE appeared while the update was prepared")
+        os.replace("value", leaf, src_dir_fd=staging, dst_dir_fd=parent)
+        return 0
+    finally:
+        cleanup_failed = False
+        if source is not None:
+            os.close(source)
+        if staging is not None:
+            try:
+                os.unlink("value", dir_fd=staging)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                cleanup_failed = True
+            os.close(staging)
+        if staging_name is not None:
+            try:
+                os.rmdir(staging_name, dir_fd=parent)
+            except OSError:
+                cleanup_failed = True
+        os.close(parent)
+        if cleanup_failed:
+            print("wizard: could not remove private environment staging", file=sys.stderr)
+
+
+try:
+    sys.exit(access_env())
+except (OSError, ValueError, AttributeError):
+    # Do not include exception text, which could contain saved values.
+    print("wizard: unsafe ENV_FILE or failed environment access",
+          file=sys.stderr)
+    sys.exit(2)
+PY
+}
+
+# _existing KEY: last saved value, with write_env's quoting undone.
 _existing() {
-  [[ -f "$ENV_FILE" ]] || return 1
-  local line value sq="'\\''"; line=$(grep -E "^${1}=" "$ENV_FILE" | tail -n1) || return 1
-  value="${line#*=}"
-  if [[ "$value" == \'*\' ]]; then value="${value:1:${#value}-2}"; value="${value//"$sq"/\'}"; fi
-  printf '%s' "$value"
+  _env_file read "$1"
 }
 
 # ask KEY "Prompt" reads a value into $KEY. Offers the existing .env value as
@@ -102,7 +298,7 @@ _existing() {
 # with Readline. Fails at EOF with no input.
 ask() {
   local key="$1" prompt="$2" current input s=$'\001' e=$'\002' p rc=0
-  current=$(_existing "$key" || true)
+  current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
   # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
   p="  $s$BOLD$e$prompt$s$RESET$e "
   [[ -n "$current" ]] && p+="$s$DIM$e[Enter keeps current]$s$RESET$e "
@@ -115,7 +311,7 @@ ask() {
 # ask_secret KEY "Prompt" is like ask, but input is hidden.
 ask_secret() {
   local key="$1" prompt="$2" current input rc=0
-  current=$(_existing "$key" || true)
+  current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
   if [[ -n "$current" ]]; then
     printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
   else
@@ -129,16 +325,12 @@ ask_secret() {
 }
 
 # write_env KEY VALUE upserts KEY='VALUE' into ENV_FILE (replaces any existing
-# line). Idempotent. Creates ENV_FILE at mode 0600; writes through a symlink
-# and keeps an existing file's mode.
+# line). Idempotent. New files use mode 0600. Existing access permissions are
+# retained, but atomic replacement changes the inode and breaks hard links.
+# Symlinked destinations and paths outside the launch project are refused.
 write_env() {
-  local key="$1" value="$2" tmp sq="'\\''"
-  [[ -e "$ENV_FILE" ]] || (umask 077 && : > "$ENV_FILE")
-  tmp=$(mktemp)
-  grep -vE "^${key}=" "$ENV_FILE" > "$tmp" || true
-  printf "%s='%s'\n" "$key" "${value//\'/$sq}" >> "$tmp"
-  cat "$tmp" > "$ENV_FILE"
-  rm -f "$tmp"
+  local key="$1" value="$2"
+  printf '%s' "$value" | _env_file write "$key" || return "$?"
   WRITTEN_ENV+=("$key")
   printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
 }
@@ -183,6 +375,12 @@ finish() {
   fi
   printf '\n'
 }
+
+command -v python3 >/dev/null 2>&1 || {
+  printf 'wizard: Python 3 is required for safe environment-file access\n' >&2
+  exit 1
+}
+_env_file check || exit "$?"
 
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: author this section. One stage() per step the human takes.
