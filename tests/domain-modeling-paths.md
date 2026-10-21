@@ -7,6 +7,7 @@ Establish the fixture repository root and approved contexts `src/ordering` and `
 | Case | Fixture or mapped destination | Expected behavior |
 | --- | --- | --- |
 | Root creation | No map and no root glossary | Create only root `GLOSSARY.md` when the term is resolved, with no confirmation solely for its absence |
+| Root fallback with map | `GLOSSARY-MAP.md` exists, but the task independently selects the repository root | Update only root `GLOSSARY.md`; no mapped-context creation or confirmation |
 | Root update | Existing regular root glossary | Preserve the existing entry and append the new term inline |
 | Nested update | `./src/ordering/GLOSSARY.md` exists | Update only the ordering glossary without asking to recreate it |
 | Alternate context | `src/billing/GLOSSARY.md` exists | Update only the independently selected billing glossary |

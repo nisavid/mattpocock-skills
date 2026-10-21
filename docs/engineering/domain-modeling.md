@@ -23,7 +23,10 @@ Reach for it when the *words* are the problem:
 
 None up front. The skill writes into two places and creates both lazily:
 
-- **`GLOSSARY.md`** at the repo root. The skill creates it when you settle the first term. In a repo with a `GLOSSARY-MAP.md` at the root, terms go into a validated per-context `GLOSSARY.md` instead. The map proposes a location; it cannot grant permission to write outside the repository or the relevant context.
+- **`GLOSSARY.md`**. The skill creates it when you settle the first term. A `GLOSSARY-MAP.md` proposes locations; it cannot grant permission to write outside the repository or the relevant context.
+  - For an independently established context, use its validated `GLOSSARY.md`.
+  - For a task that selects the repository root, use root `GLOSSARY.md`, even when a map exists.
+  - If the context is unclear, ask before writing.
 - **`docs/adr/`**. The skill creates it with the first ADR that clears the bar.
 
 Nothing needs to exist before you start, and the skill creates nothing in advance.
