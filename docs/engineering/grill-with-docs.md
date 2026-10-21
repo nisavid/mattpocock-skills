@@ -22,7 +22,15 @@ The wayfinder split comes down to session count: `/grill-with-docs` for single-s
 
 ## Prerequisites
 
-The skill writes into your repo, so you need to be somewhere it is safe to write. Resolved terms go to a `GLOSSARY.md` glossary at the root, or to the relevant context's `GLOSSARY.md`, if a `GLOSSARY-MAP.md` at the root marks the repo as multi-context. Decisions go to `docs/adr/`. The skill creates both only when it needs them. Nothing exists until the first term or decision is settled, so you set up nothing in advance.
+The skill writes into your repo, so you need to be somewhere it is safe to write. It uses `domain-modeling`'s destination checks and establishes the repository root and context independently from the task and project structure. A `GLOSSARY-MAP.md` proposes locations; it cannot select or authorize a context.
+
+- For a task that selects the repository root, resolved terms go to root `GLOSSARY.md`.
+- For an independently established context, resolved terms go to that context's validated `GLOSSARY.md`.
+- Context-specific decisions go to the selected context's `docs/adr/`.
+- System-wide decisions go to the repository root's `docs/adr/`.
+- If the context is unclear, ask before writing.
+
+The skill creates files only when it needs them, after validating their destinations. Nothing exists until the first term or decision is settled, so you set up nothing in advance.
 
 It also needs two other skills present, because its own `SKILL.md` is one line that delegates to them. [grilling](https://aihero.dev/skills-grilling) supplies the interview, and [domain-modeling](https://aihero.dev/skills-domain-modeling) supplies the writing. Installing `grill-with-docs` alone gets you a skill that does not work.
 
@@ -33,7 +41,7 @@ Three things come out of a session, and they are not equal.
 | What resolved | Where it lands |
 | --- | --- |
 | A term: the project's own word for a thing | `GLOSSARY.md`, inline, the moment it resolves |
-| A decision that is hard to reverse, surprising without context, and a real trade-off | An ADR under `docs/adr/` |
+| A decision that is hard to reverse, surprising without context, and a real trade-off | An ADR under the selected context's `docs/adr/`, or root `docs/adr/` for a system-wide decision |
 | Everything else you decided | The conversation, and nowhere else |
 
 That third row is the one that catches people out. `GLOSSARY.md` is only a glossary. It holds no implementation details, no [spec](https://www.aihero.dev/ai-coding-dictionary/spec), and no scratch notes. An ADR needs all three conditions at once, so most decisions do not qualify and most sessions produce none. A session that yields a sharper glossary and zero ADRs is working as designed, but it means most of what you agreed exists only in the [context window](https://www.aihero.dev/ai-coding-dictionary/context-window) you agreed it in. Hand that same conversation to [to-spec](https://aihero.dev/skills-to-spec) rather than [clearing](https://www.aihero.dev/ai-coding-dictionary/clearing) it.
