@@ -34,6 +34,8 @@ For each stage, write the precise path a human follows: which URL to open, what 
 
 Copy `template.sh` to the target path. Replace the example stage with one `stage` per step, in dependency order. Use the library helpers: `stage`, `say`/`step`, `open_url`, `ask`/`ask_secret`, `write_env`, `set_secret`/`set_var`, `pause`/`confirm`. Set `TOTAL_STAGES` to the number of stages you wrote.
 
+Require Python 3 on the human's Linux, macOS, or WSL machine. Tell them to launch the wizard from the project directory: local values stay under that directory, even if a stage changes directories. Keep `ENV_FILE` within it, with no symlinked components or `..` traversal. Existing destinations must be regular files. The library reserves file descriptor 9 and atomically replaces the destination, retaining access permissions while changing its inode and leaving hard-linked aliases unchanged. Do not change that descriptor in a stage. Existing generated scripts must be regenerated to gain these safeguards.
+
 Hold the bar the template sets: open the URL before asking for its value, use `ask_secret` for anything secret, `write_env` every persisted value, `set_secret` only the values CI actually needs, and `confirm` before any irreversible action. Each `stage` clears the screen so only the current step is visible: keep a stage to one focused task so nothing the human needs scrolls away. Don't touch the library above the marker.
 
 ### 4. Verify and hand off
