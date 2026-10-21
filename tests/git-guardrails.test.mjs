@@ -9,22 +9,26 @@ import { test } from "node:test";
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const hook = join(repo, "skills/misc/git-guardrails-claude-code/scripts/block-dangerous-git.sh");
 
+/** Invoke only the hook, with bounded execution and optional dependency isolation. */
 function run(input, env = process.env) {
   const result = spawnSync("/bin/bash", [hook], { input, encoding: "utf8", env, timeout: 5000 });
   assert.equal(result.error, undefined);
   return result;
 }
 
+/** Encode a command as a Bash PreToolUse input without executing it. */
 function command(value) {
   return JSON.stringify({ tool_name: "Bash", hook_event_name: "PreToolUse", tool_input: { command: value } });
 }
 
+/** Require an explicit blocking exit without an output authorization decision. */
 function denied(result) {
   assert.equal(result.status, 2, result.stderr);
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /^BLOCKED:/);
 }
 
+/** Require a user-review decision that preserves the original tool input. */
 function reviewed(result) {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stderr, "");
