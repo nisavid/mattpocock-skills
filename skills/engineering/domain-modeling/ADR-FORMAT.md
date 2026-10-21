@@ -1,8 +1,8 @@
 # ADR Format
 
-ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc.
+Context-specific ADRs live in the selected context's `docs/adr/`; system-wide ADRs live in the repository root's `docs/adr/`. Use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc.
 
-Create the `docs/adr/` directory lazily: only when the first ADR is needed.
+Establish the context from the user's request or independently verified project structure, independently of any `GLOSSARY-MAP.md`. The map cannot select or authorize a context. If the context is unclear, ask before writing. Apply [the skill's destination checks](./SKILL.md#validate-destinations-before-writing) before creating directories or writing an ADR. Create the validated `docs/adr/` directory lazily: only when the first ADR is needed.
 
 ## Template
 
@@ -24,7 +24,7 @@ Only include these when they add genuine value. Most ADRs won't need them.
 
 ## Numbering
 
-Scan `docs/adr/` for the highest existing number and increment by one.
+Scan only the validated ADR directory selected above (the context's `docs/adr/`, or the repository root's for a system-wide decision) for the highest existing number and increment by one.
 
 ## When to offer an ADR
 
