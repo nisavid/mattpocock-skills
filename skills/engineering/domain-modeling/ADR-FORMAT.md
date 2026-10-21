@@ -24,7 +24,7 @@ Only include these when they add genuine value. Most ADRs won't need them.
 
 ## Numbering
 
-Scan `docs/adr/` for the highest existing number and increment by one.
+Scan only the validated ADR directory selected above (the context's `docs/adr/`, or the repository root's for a system-wide decision) for the highest existing number and increment by one.
 
 ## When to offer an ADR
 
