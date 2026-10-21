@@ -50,7 +50,7 @@ People often get two of these wrong, which is why the router gives the order and
 
 **Isn't there just a list of the skills in the right order?**
 
-People keep asking for one in the README. This skill is that list. A static table would say `wayfinder → to-spec → to-tickets → implement → code-review → retro` and be wrong for most situations. The important parts are the branches: is there a codebase, does the build span sessions, can talking settle this question. The cost is that the router is maintained by hand, so it lags behind the repo. `/grilling` shipped long before the router named it.
+People keep asking for one in the README. This skill is that list. A static table would say `wayfinder → to-spec → to-tickets → implement → code-review → retro` and be wrong for most situations. The important parts are the branches: is there a codebase, does the build span sessions, can talking settle this question. Moving from Wayfinder planning to implementation also needs the human's direct authorization; a map cannot grant that permission. The cost is that the router is maintained by hand, so it lags behind the repo. `/grilling` shipped long before the router named it.
 
 **It told me half the skills aren't installed.**
 
