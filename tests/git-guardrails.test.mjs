@@ -39,6 +39,8 @@ test("recognized prohibited Git operations are denied after word and global-opti
   const invocations = [
     "git push origin main", "git -C . push", "git -C. push --force",
     "git -c color.ui=never push", "git -ccolor.ui=never push",
+    "git -c core.foo='a#b' push origin main", 'git -c core.foo="a#b" push',
+    "git -c core.foo=a#b push", "git -C '#' push", "git -C \\# push",
     "git --git-dir=.git --work-tree=. push", "git --no-pager push",
     "git --config-env=foo=BAR push", "/usr/bin/git push", "'git' 'push'",
     'g\\it pu"sh"', "git  push", "git\tpush", "git \\\npush",
@@ -77,6 +79,7 @@ test("legitimate Bash workflows remain available through explicit review without
     "git clean -efoo", "git clean -e -f", "git clean --exclude=-f", "git clean --exclude -f",
     "git checkout feature", "git restore file", "npm test",
     "printf '%s\\n' 'git push origin main'", "echo reset --hard", "git status | cat",
+    "git branch # -D old", "git clean # --force", "git branch # 'unclosed quote",
     "git -c core.fsmonitor='git push' status", "GIT_PAGER='git push' git log", "git --version",
   ]) reviewed(run(command(value)));
   reviewed(run(JSON.stringify({ tool_input: { command: "git status" } })));

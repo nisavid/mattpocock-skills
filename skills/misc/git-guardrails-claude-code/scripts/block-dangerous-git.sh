@@ -32,12 +32,41 @@ def invalid_constant(value):
     raise ValueError("non-JSON constant")
 
 
+def has_shell_comment(command):
+    # Bash starts a comment at an unquoted, unescaped # at the start of a
+    # word. Keep comments outside the recognizer without rejecting literal #.
+    quote = None
+    escaped = False
+    word_start = True
+    for char in command:
+        if escaped:
+            escaped = False
+            word_start = False
+        elif char == "\\" and quote != "\x27":
+            escaped = True
+            word_start = False
+        elif quote is not None:
+            if char == quote:
+                quote = None
+        elif char in "\x27\"":
+            quote = char
+            word_start = False
+        elif char in " \t\n":
+            word_start = True
+        elif char == "#" and word_start:
+            return True
+        else:
+            word_start = False
+    return False
+
+
 def git_arguments(command):
     # This is a bounded literal-word recognizer, not a Bash interpreter. Anything
     # outside it still requires user review, including scripts and substitutions.
-    if any(char in command for char in "$`;|&<>(){}#"):
+    command = command.replace("\\\n", "")
+    if any(char in command for char in "$`;|&<>(){}") or has_shell_comment(command):
         return []
-    words = shlex.split(command.replace("\\\n", ""), posix=True)
+    words = shlex.split(command, posix=True)
     if not words or posixpath.basename(words[0]) != "git":
         return []
     index = 1
