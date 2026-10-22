@@ -24,12 +24,10 @@ TOTAL_STAGES=0
 
 _STAGE_INDEX=0
 ENV_FILE="${ENV_FILE:-.env}"
-# Pin the launch directory, even if a stage later changes directories. FD 9 is
-# reserved by the library and inherited by its descriptor-relative file helper.
-readonly _WIZARD_ENV_ROOT="$(pwd -P)"
-exec 9< .
-WRITTEN_ENV=()    # KEYs written to ENV_FILE this run
-WRITTEN_SECRET=() # secret NAMEs set this run
+_WIZARD_CONFIGURED=0
+_WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
+WRITTEN_ENV=()    # successful KEY and destination records
+WRITTEN_SECRET=() # successful secret NAME and destination records
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
 
 # _clear wipes the terminal so only the current step is on screen. No-op when
@@ -95,9 +93,10 @@ confirm() {
 # _env_file MODE [KEY] is the shared boundary for saved values. Missing reads
 # return 1; unsafe destinations and I/O errors return 2. The explicit value
 # payload uses FD 3; Python source uses stdin. Python still inherits the shell's
-# exported environment. All filesystem access starts at the pinned root.
+# exported environment. All filesystem access starts at the confirmed root.
 _env_file() {
-  python3 -I - "$_WIZARD_ENV_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
+  if [[ "$1" != check ]]; then _require_destinations || return "$?"; fi
+  python3 -I - "$_WIZARD_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
 import errno
 import os
 import re
@@ -173,7 +172,7 @@ def access_env():
     if os.path.isabs(path):
         prefix = root.rstrip("/") + "/"
         if not path.startswith(prefix):
-            raise ValueError("ENV_FILE must stay inside the launch project")
+            raise ValueError("ENV_FILE must stay inside the confirmed project")
         path = path[len(prefix):]
     parts = path.split("/")
     if not parts[-1] or parts[-1] in (".", "..") or ".." in parts:
@@ -296,6 +295,86 @@ except (OSError, ValueError, AttributeError):
 PY
 }
 
+# Revoke prior authorization before reconfiguration or after destination drift.
+# FD 9 is reserved for descriptor-relative access to the confirmed root.
+_revoke_destinations() {
+  _WIZARD_CONFIGURED=0
+  _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
+  exec 9<&-
+}
+
+# Normalize the displayed path without following or hiding symlink components.
+# The descriptor-relative check rejects symlinks and unusable destinations.
+_env_destination() {
+  local root="$1" file="$2" relative component normalized="${1%/}"
+  local -a parts
+  case "$file" in ''|*/|*$'\n'*|*$'\r'*) return 1 ;; esac
+  relative="$file"
+  if [[ "$file" == /* ]]; then
+    if [[ "$root" != / && "$file" != "$root/"* ]]; then
+      warn "ENV_FILE must stay inside the confirmed project root" >&2
+      return 1
+    fi
+    relative="${file#"${root%/}/"}"
+  fi
+  case "${relative##*/}" in ''|.|..) return 1 ;; esac
+  IFS=/ read -r -a parts <<< "$relative"
+  for component in "${parts[@]}"; do
+    case "$component" in
+      ..) warn "ENV_FILE must not contain parent traversal" >&2; return 1 ;;
+      ''|.) ;;
+      *) normalized="$normalized/$component" ;;
+    esac
+  done
+  printf '%s' "$normalized"
+}
+
+# Call before capturing any values. An empty repo selects local-only setup.
+# OWNER/REPO means github.com; HOST/OWNER/REPO supports explicit other hosts.
+configure_destinations() {
+  local root="${1:-}" repo="${2:-}" file reply="" rc
+  _revoke_destinations
+  [[ -n "$root" ]] || { warn "Specify the project root" >&2; return 1; }
+  [[ "$root" == /* ]] || root="$PWD/$root"
+  root=$(cd -P -- "$root" && printf '%s/.' "$PWD") || return 1
+  root="${root%/.}"
+  case "$root" in *$'\n'*|*$'\r'*) return 1 ;; esac
+  file=$(_env_destination "$root" "$ENV_FILE") || return 1
+  if [[ -n "$repo" ]]; then
+    [[ "$repo" == */*/* ]] || repo="github.com/$repo"
+    if [[ ! "$repo" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ || "${repo##*/}" == . || "${repo##*/}" == .. ]]; then
+      warn "Specify GitHub repository as [HOST/]OWNER/REPO" >&2
+      return 1
+    fi
+  fi
+  command -v python3 >/dev/null 2>&1 || {
+    printf 'wizard: Python 3 is required for safe environment-file access\n' >&2
+    return 2
+  }
+  # Pin the displayed directory before waiting for input, without reading values.
+  _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"
+  if ! exec 9< "$root"; then _revoke_destinations; return 2; fi
+  printf '\n  Project root: %q\n  Env file:     %q\n' "$root" "$file"
+  printf '  GitHub repo:  %s\n' "${repo:-none (local-only)}"
+  printf '  Use these destinations? [y/N] '
+  read -r reply || { _revoke_destinations; return 1; }
+  case "$reply" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
+  ENV_FILE="$file"
+  _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
+  _WIZARD_CONFIGURED=1
+}
+
+# Recheck before every operation; a changed destination needs fresh consent.
+_require_destinations() {
+  local rc
+  if [[ "$_WIZARD_CONFIGURED" != 1 || "$ENV_FILE" != "$_WIZARD_ENV_FILE" ]]; then
+    _revoke_destinations
+    warn "Call configure_destinations before capturing or persisting values" >&2
+    return 2
+  fi
+  _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
+}
+
 # _existing KEY: last saved value, with write_env's quoting undone.
 _existing() {
   _env_file read "$1"
@@ -305,6 +384,7 @@ _existing() {
 # a default on re-runs (Enter keeps it). Visible input (non-secret), edited
 # with Readline. Fails at EOF with no input.
 ask() {
+  _require_destinations || return "$?"
   local key="$1" prompt="$2" current input s=$'\001' e=$'\002' p rc=0
   current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
   # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
@@ -318,6 +398,7 @@ ask() {
 
 # ask_secret KEY "Prompt" is like ask, but input is hidden.
 ask_secret() {
+  _require_destinations || return "$?"
   local key="$1" prompt="$2" current input rc=0
   current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
   if [[ -n "$current" ]]; then
@@ -335,35 +416,49 @@ ask_secret() {
 # write_env KEY VALUE upserts KEY='VALUE' into ENV_FILE (replaces any existing
 # line). Idempotent. New files use mode 0600. Existing access permissions are
 # retained, but atomic replacement changes the inode and breaks hard links.
-# Symlinked destinations and paths outside the launch project are refused.
+# Symlinked destinations and paths outside the confirmed project are refused.
 write_env() {
-  local key="$1" value="$2"
+  _require_destinations || return "$?"
+  local key="$1" value="$2" destination
   printf '%s' "$value" | _env_file write "$key" || return "$?"
-  WRITTEN_ENV+=("$key")
+  printf -v destination '%s → %q' "$key" "$ENV_FILE"
+  WRITTEN_ENV+=("$destination")
   printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
 }
 
 # set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
 # to a warning (and records it) if gh is unavailable or unauthenticated.
 set_secret() {
+  _require_destinations || return "$?"
   local name="$1" value="$2"
+  if [[ -z "$_WIZARD_REPO" ]]; then
+    SKIPPED+=("GitHub secret $name (no repository confirmed)")
+    warn "skipped GitHub secret $name: no repository confirmed"
+    return 0
+  fi
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if printf '%s' "$value" | gh secret set "$name" >/dev/null 2>&1; then
-      WRITTEN_SECRET+=("$name")
-      printf '  %s✓ set%s GitHub secret %s\n' "$GREEN" "$RESET" "$name"
+    if printf '%s' "$value" | gh secret set "$name" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+      WRITTEN_SECRET+=("$name → $_WIZARD_REPO")
+      printf '  %s✓ set%s GitHub secret %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
       return
     fi
   fi
-  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name)")
+  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name --repo $_WIZARD_REPO)")
   warn "skipped GitHub secret $name: gh not ready; set it later"
 }
 
 # set_var NAME VALUE sets a GitHub Actions repo variable (non-secret).
 set_var() {
+  _require_destinations || return "$?"
   local name="$1" value="$2"
+  if [[ -z "$_WIZARD_REPO" ]]; then
+    SKIPPED+=("GitHub variable $name (no repository confirmed)")
+    warn "skipped GitHub variable $name: no repository confirmed"
+    return 0
+  fi
   if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if gh variable set "$name" --body "$value" >/dev/null 2>&1; then
-      printf '  %s✓ set%s GitHub variable %s\n' "$GREEN" "$RESET" "$name"
+    if gh variable set "$name" --body "$value" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+      printf '  %s✓ set%s GitHub variable %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
       return
     fi
   fi
@@ -373,22 +468,23 @@ set_var() {
 
 # finish clears, then shows a closing summary of everything configured.
 finish() {
+  local s
   _clear
   printf '\n%s%s  ✓ Setup complete%s\n' "$BOLD" "$GREEN" "$RESET"
-  (( ${#WRITTEN_ENV[@]} ))    && note "wrote ${#WRITTEN_ENV[@]} value(s) to $ENV_FILE: ${WRITTEN_ENV[*]}"
-  (( ${#WRITTEN_SECRET[@]} )) && note "set ${#WRITTEN_SECRET[@]} GitHub secret(s): ${WRITTEN_SECRET[*]}"
+  if (( ${#WRITTEN_ENV[@]} )); then
+    note "wrote ${#WRITTEN_ENV[@]} value(s):"
+    for s in "${WRITTEN_ENV[@]}"; do note "  - $s"; done
+  fi
+  if (( ${#WRITTEN_SECRET[@]} )); then
+    note "set ${#WRITTEN_SECRET[@]} GitHub secret(s):"
+    for s in "${WRITTEN_SECRET[@]}"; do note "  - $s"; done
+  fi
   if (( ${#SKIPPED[@]} )); then
     printf '\n'; warn "still to do by hand:"
     for s in "${SKIPPED[@]}"; do note "  - $s"; done
   fi
   printf '\n'
 }
-
-command -v python3 >/dev/null 2>&1 || {
-  printf 'wizard: Python 3 is required for safe environment-file access\n' >&2
-  exit 1
-}
-_env_file check || exit "$?"
 
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: author this section. One stage() per step the human takes.
@@ -397,6 +493,8 @@ _env_file check || exit "$?"
 
 TOTAL_STAGES=1
 
+# Author the intended root and repository here. Without a repo, writes stay local.
+configure_destinations "${PROJECT_ROOT:-.}" "${WIZARD_GITHUB_REPO:-}"
 banner "Stripe setup"
 
 # ── Example stage: replace with your real steps ───────────────────────────

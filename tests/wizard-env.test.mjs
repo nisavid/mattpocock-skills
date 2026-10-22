@@ -23,7 +23,7 @@ function fixture(t) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), bytes);
   };
-  const run = (body, options = {}) => spawnSync("bash", ["-c", library + "\n" + body], {
+  const run = (body, options = {}) => spawnSync("bash", ["-c", library + '\nconfigure_destinations "$PWD" >/dev/null <<< yes\n' + body], {
     cwd: root,
     env: { ...process.env, ENV_FILE: options.envFile ?? ".env", ...options.env },
     input: options.input ?? "",
@@ -63,16 +63,16 @@ if write_env TOKEN 'synthetic-new-value'; then rc=0; else rc=$?; fi
 printf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"
 `;
 
-function assertRejectedWrite(result) {
+function assertRejectedWrite(result, diagnostic = /unsafe ENV_FILE|failed environment access/) {
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /RESULT:2 WRITTEN:0/);
   assert.doesNotMatch(result.stdout, /✓ wrote/);
   assert.doesNotMatch(result.stdout + result.stderr, /synthetic-new-value/);
-  assert.match(result.stderr, /unsafe ENV_FILE|failed environment access/);
+  assert.match(result.stderr, diagnostic);
 }
 
-test("startup and write_env reject symlinked, outside, traversing, and non-file destinations", async (t) => {
+test("configuration and write_env reject symlinked, outside, traversing, and non-file destinations", async (t) => {
   const cases = {
     "existing leaf symlink to an outside file": (f) => {
       symlinkSync(join(f.base, "outside.env"), join(f.root, ".env"));
@@ -125,15 +125,15 @@ test("startup and write_env reject symlinked, outside, traversing, and non-file 
     writeFileSync(join(f.base, "outside.env"), "TOKEN='synthetic-outside-sentinel'\n");
     const destination = setup(f);
     const before = snapshot(f.base);
-    const startup = f.run("printf 'LIBRARY_LOADED\\n'", { envFile: destination });
-    assert.equal(startup.error, undefined);
-    assert.equal(startup.status, 2, startup.stderr);
-    assert.doesNotMatch(startup.stdout, /LIBRARY_LOADED/);
+    const configured = f.run("printf 'CONFIGURED\\n'", { envFile: destination });
+    assert.equal(configured.error, undefined);
+    assert.notEqual(configured.status, 0, configured.stderr);
+    assert.doesNotMatch(configured.stdout, /CONFIGURED/);
     assert.deepEqual(snapshot(f.base), before);
 
     // Start from a safe filename so this also exercises the per-call boundary.
     const result = f.run(`ENV_FILE=${quote(destination)}\n${guardedWrite}`, { envFile: "safe-start.env" });
-    assertRejectedWrite(result);
+    assertRejectedWrite(result, /configure_destinations/);
     assert.deepEqual(snapshot(f.base), before);
   });
 });
@@ -143,11 +143,12 @@ test("unsafe defaults propagate through _existing, ask, and ask_secret before re
     const f = fixture(t);
     const saved = "synthetic-must-not-read-or-print";
     writeFileSync(join(f.base, "outside.env"), `TOKEN='${saved}'\n`);
-    symlinkSync(join(f.base, "outside.env"), join(f.root, "unsafe.env"));
+    f.put(".env", "TOKEN='synthetic-before-swap'\n");
     const before = snapshot(f.base);
     const call = operation === "_existing" ? 'current=$(_existing TOKEN)' : `${operation} TOKEN 'Synthetic prompt:'`;
     const result = f.run(`
-ENV_FILE=unsafe.env
+rm "$ENV_FILE"
+ln -s ${quote(join(f.base, "outside.env"))} "$ENV_FILE"
 TOKEN=unchanged
 if ${call}; then rc=0; else rc=$?; fi
 IFS= read -r remaining
@@ -156,7 +157,12 @@ printf 'RESULT:%s VALUE:%s NEXT:%s\\n' "$rc" "$TOKEN" "$remaining"
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /RESULT:2 VALUE:unchanged NEXT:synthetic-prompt-input/);
     assert.doesNotMatch(result.stdout + result.stderr, new RegExp(saved));
-    assert.deepEqual(snapshot(f.base), before);
+    assert.equal(readFileSync(join(f.base, "outside.env"), "utf8"), `TOKEN='${saved}'\n`);
+    assert.equal(readlinkSync(join(f.root, ".env")), join(f.base, "outside.env"));
+    const after = snapshot(f.base);
+    delete before["project/.env"];
+    delete after["project/.env"];
+    assert.deepEqual(after, before);
   });
 });
 
@@ -218,7 +224,7 @@ test("defaults use the last assignment and undo write_env's apostrophe quoting",
   });
 });
 
-test("nested paths with spaces and absolute paths inside the launch project are accepted", async (t) => {
+test("nested paths with spaces and absolute paths inside the confirmed project are accepted", async (t) => {
   for (const absolute of [false, true]) await t.test(absolute ? "absolute" : "relative", (t) => {
     const f = fixture(t);
     mkdirSync(join(f.root, "config with spaces"));
@@ -232,7 +238,7 @@ test("nested paths with spaces and absolute paths inside the launch project are 
   });
 });
 
-test("changing cwd still reads and updates the launch project's environment file", (t) => {
+test("changing cwd still reads and updates the confirmed project's environment file", (t) => {
   const f = fixture(t);
   f.put(".env", "TOKEN='synthetic-launch'\n");
   f.put("elsewhere/.env", "TOKEN='synthetic-cwd-sentinel'\n");
@@ -242,7 +248,7 @@ test("changing cwd still reads and updates the launch project's environment file
   assert.equal(readFileSync(join(f.root, "elsewhere/.env"), "utf8"), "TOKEN='synthetic-cwd-sentinel'\n");
 });
 
-test("the pinned launch directory survives renaming and replacement of its old pathname", (t) => {
+test("the pinned confirmed directory survives renaming and replacement of its old pathname", (t) => {
   const f = fixture(t);
   f.put(".env", "TOKEN='synthetic-original-root'\n");
   const result = f.run(`
@@ -492,7 +498,7 @@ if sys.argv[3] == 'write':
   assert.equal(existing.status, 0, existing.stderr);
   const created = f.run("umask 000\nwrite_env TOKEN 'synthetic-new-after'", { env, envFile: "new.env" });
   assert.equal(created.status, 0, created.stderr);
-  assert.deepEqual(readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line)), [".env", "new.env"]);
+  assert.deepEqual(readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line)), [join(f.root, ".env"), join(f.root, "new.env")]);
 
   const after = spawnSync(python, ["-I", "-c", nativeAcl + `
 import sys
@@ -535,7 +541,8 @@ test("Python receives values through its input descriptor, without values in its
   const result = f.run(`write_env TOKEN ${quote(value)}\n[[ "$(_existing TOKEN)" == ${quote(value)} ]]`, { env });
   assert.equal(result.status, 0, result.stderr);
   const calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-  assert.deepEqual(calls.map((args) => args[3]), ["check", "write", "read"]);
+  assert.deepEqual(calls.filter((args) => args[3] !== "check").map((args) => args[3]), ["write", "read"]);
+  assert.ok(calls.every((args) => ["check", "write", "read"].includes(args[3])));
   assert.ok(calls.every((args) => !args.some((arg) => arg.includes(value))));
   assert.ok(!result.stdout.includes(value));
 });

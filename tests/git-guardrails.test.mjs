@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, chmodSync, readFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, chmodSync, closeSync, openSync, readFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,9 +11,18 @@ const hook = join(repo, "skills/misc/git-guardrails-claude-code/scripts/block-da
 
 /** Invoke only the hook, with bounded execution and optional dependency isolation. */
 function run(input, env = process.env) {
-  const result = spawnSync("/bin/bash", [hook], { input, encoding: "utf8", env, timeout: 5000 });
-  assert.equal(result.error, undefined);
-  return result;
+  const dir = mkdtempSync(join(tmpdir(), "git-hook-input-"));
+  const file = join(dir, "stdin");
+  writeFileSync(file, input);
+  const stdin = openSync(file, "r");
+  try {
+    const result = spawnSync("/bin/bash", [hook], { stdio: [stdin, "pipe", "pipe"], encoding: "utf8", env, timeout: 5000 });
+    assert.equal(result.error, undefined);
+    return result;
+  } finally {
+    closeSync(stdin);
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** Encode a command as a Bash PreToolUse input without executing it. */
