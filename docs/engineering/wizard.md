@@ -76,7 +76,7 @@ Not mid-run. There is no back button. The stages run forward, and a wrong answer
 
 **What if I run it from another directory?**
 
-Check the absolute destinations shown before the first stage. Reject them if they name the wrong project or repository. Those destinations stay fixed until the script calls `configure_destinations` again and you confirm the replacements. The final summary keeps each env write and secret's original destination. Relative `ENV_FILE` overrides resolve inside the chosen project root. The script author sets the root and repository in `configure_destinations`; the template example also accepts `PROJECT_ROOT` and `WIZARD_GITHUB_REPO` when launched. No repository means no GitHub writes.
+Check the absolute destinations shown before the first stage. Reject them if they name the wrong project or repository. Those destinations stay fixed until the script calls `configure_destinations` again and you confirm the replacements. The final summary keeps each env write and secret's original destination. Relative `ENV_FILE` overrides resolve inside the chosen project root. A successful call sets `ENV_FILE` to the confirmed absolute path. Before selecting a different root, set `ENV_FILE` to the intended path inside that root, for example `ENV_FILE=.env` to resolve it relative to the new root, then configure and confirm again. The script author sets the root and repository in `configure_destinations`; the template example also accepts `PROJECT_ROOT` and `WIZARD_GITHUB_REPO` when launched. No repository means no GitHub writes.
 
 **Does it know what I've already set up?**
 
