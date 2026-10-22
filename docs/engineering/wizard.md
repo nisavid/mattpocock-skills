@@ -21,9 +21,11 @@ Don't reach for it to *decide* what to build; for that, [grill-with-docs](https:
 
 ## Prerequisites
 
-None to generate one. Run the generated wizard from your project directory using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the directory where you launched it. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers.
+None to generate one. Run the generated wizard using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the project directory you confirm before the first stage. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers.
 
 The wizard uses `gh` when a stage sets a GitHub secret or variable. If `gh` is missing or not authenticated, the run does not fail. That stage shows a warning, and the closing summary tells you what to set by hand.
+
+Before entering values, you confirm the displayed project root, env file, and GitHub repository. The env file must stay inside the project with an existing parent directory and no symlinked components or parent traversal. New files use mode `0600`; existing files retain their access permissions. Repository destinations include their host, so later working-directory or GitHub environment changes cannot send a credential elsewhere. A wizard without a repository destination runs in local-only mode and reports skipped GitHub writes.
 
 ## Stages
 
@@ -58,7 +60,7 @@ The agent that writes a wizard never runs it end to end, because the script open
 
 **Can `.env` be a symlink or live outside my project?**
 
-This fork rejects those destinations before reading saved defaults or writing values. `ENV_FILE` may pass through existing subdirectories or use an absolute path under the physical launch directory (`pwd -P`), but its components must not be symlinks or contain `..`. The destination itself must be absent for creation or an existing regular file. Directories, FIFOs, and other non-regular destinations are rejected. Unsafe access stops the prompt or write instead of continuing with an empty default.
+This fork rejects those destinations before reading saved defaults or writing values. `ENV_FILE` may pass through existing subdirectories or use an absolute path under the confirmed physical project directory, but its components must not be symlinks or contain `..`. The destination itself must be absent for creation or an existing regular file. Directories, FIFOs, and other non-regular destinations are rejected. Unsafe access stops the prompt or write instead of continuing with an empty default.
 
 New files are private (`0600`). Existing files retain their owner, group, mode, access-control lists, and extended attributes; an update fails before replacement if that metadata cannot be retained. Intended sharing remains possible, so you still need to check who can read an existing destination. Atomic replacement requires write access to its parent directory, changes the inode, and leaves other hard links pointing to the old contents. This fork supersedes upstream's deliberate symlink write-through behavior.
 
@@ -71,6 +73,10 @@ No. The agent writes a script; it doesn't run it. You run the script yourself, a
 **Can I go back and fix a value I mistyped?**
 
 Not mid-run. There is no back button. The stages run forward, and a wrong answer on stage 3 means Ctrl-C and re-run. Re-running is cheap, because any value already written to `.env` is offered back as a default, so you press Enter through the stages you got right and retype only the wrong one. Users asked for this in launch week, and it is still open: "loved it! One thing though, is there a way to go back and correct what you've entered?"
+
+**What if I run it from another directory?**
+
+Check the absolute destinations shown before the first stage. Reject them if they name the wrong project or repository. Those destinations stay fixed until the script calls `configure_destinations` again and you confirm the replacements. The final summary keeps each env write and secret's original destination. Relative `ENV_FILE` overrides resolve inside the chosen project root. A successful call sets `ENV_FILE` to the confirmed absolute path. Before selecting a different root, set `ENV_FILE` to the intended path inside that root, for example `ENV_FILE=.env` to resolve it relative to the new root, then configure and confirm again. The script author sets the root and repository in `configure_destinations`; the template example also accepts `PROJECT_ROOT` and `WIZARD_GITHUB_REPO` when launched. No repository means no GitHub writes.
 
 **Does it know what I've already set up?**
 
@@ -97,6 +103,7 @@ It did. It's now model-invoked, so the agent reaches for it unprompted when it h
 - You're shown an ordered list of stages, and the values each one produces, and asked to confirm, before any script exists.
 - Every URL is opened before the value from that page is asked for. You're never asked to paste something you haven't been sent to fetch.
 - Secrets are typed blind. Nothing sensitive echoes into your scrollback.
+- You confirm the project, env file, and repository before the wizard reads or captures values.
 - Each stage fits one screen. Nothing you still need has scrolled away.
 - Ctrl-C and re-run picks up where you left off, offering the values already saved as defaults.
 - The final screen lists what it wrote, and separately lists what it couldn't do and you have to finish by hand.
