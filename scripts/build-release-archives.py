@@ -226,6 +226,10 @@ def build(raw, expected_sha256, revision, base, release):
     native = unique_json(source[".codex-plugin/plugin.json"][0])
     package = unique_json(source["package.json"][0])
     require(
+        claude.get("name") == native.get("name") == "mattpocock-skills",
+        "source plugin name mismatch",
+    )
+    require(
         claude["version"] == native["version"] == package["version"] == base,
         "source version mismatch",
     )
