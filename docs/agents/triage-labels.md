@@ -1,6 +1,17 @@
 # Triage Labels
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
+The triage vocabulary has two category roles and five state roles. This file maps those canonical roles to the label strings used in this repo's issue tracker.
+
+Every triaged implementation issue carries exactly one category role and one state role. Wayfinder issues carry no triage labels; their relationships and labels are governed by [Wayfinding operations](issue-tracker.md#wayfinding-operations).
+
+## Category roles
+
+| Canonical role | Label in our tracker | Meaning |
+| --- | --- | --- |
+| `bug` | `bug` | Something is broken |
+| `enhancement` | `enhancement` | New feature or improvement |
+
+## State roles
 
 | Label in mattpocock/skills | Label in our tracker | Meaning                                  |
 | -------------------------- | -------------------- | ---------------------------------------- |
