@@ -45,4 +45,4 @@ def test_build_refuses_skills_with_same_flattened_name():
         assert root + "/skills/engineering/alpha/agents/openai.yaml" in names
         assert root + "/skills/productivity/alpha/agents/openai.yaml" in names
     with pytest.raises(ValueError):
-        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1-1")
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1")

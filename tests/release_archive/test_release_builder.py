@@ -30,11 +30,11 @@ BETA_DATA = b"\x00\xffliteral support bytes\r\n"
 LICENSE = b"MIT fixture license\nCopyright (c) 2026 Fixture Author\n"
 
 
-def source_archive():
+def source_archive(source_version="1.3.1", native_version=None):
     roots = ["./skills/engineering/alpha", "./skills/productivity/beta"]
     manifest = {
         "name": "mattpocock-skills",
-        "version": "1.3.1",
+        "version": source_version,
         "description": "Synthetic release fixture",
         "author": {"name": "Fixture Author"},
         "license": "MIT",
@@ -46,10 +46,12 @@ def source_archive():
         "developerName": "Fixture Author",
         "category": "Developer Tools",
     })
+    if native_version is not None:
+        native["version"] = native_version
     files = {
         ".claude-plugin/plugin.json": (json.dumps(manifest).encode(), 0o644),
         ".codex-plugin/plugin.json": (json.dumps(native).encode(), 0o644),
-        "package.json": (b'{"version":"1.3.1"}\n', 0o644),
+        "package.json": (json.dumps({"version": source_version}).encode(), 0o644),
         "LICENSE": (LICENSE, 0o644),
         "skills/engineering/alpha/SKILL.md": (ALPHA_SKILL, 0o644),
         "skills/engineering/alpha/agents/openai.yaml": (ALPHA_AGENT, 0o644),
@@ -78,15 +80,48 @@ def source_archive():
     return output.getvalue()
 
 
+def test_build_separates_source_version_from_upstream_base():
+    from release_builder import build
+
+    source = source_archive(source_version="1.3.2")
+    archives, _report = build(
+        source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.2"
+    )
+    for fmt, manifest_path in (
+        ("agent-plugins", "plugin.json"),
+        ("claude", ".claude-plugin/plugin.json"),
+    ):
+        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-1.3.1.ergo.2-{fmt}.zip"])) as archive:
+            assert json.loads(archive.read(manifest_path))["version"] == "1.3.1.ergo.2"
+            provenance = json.loads(archive.read("RELEASE.json"))
+            assert provenance["base_version"] == "1.3.1"
+            assert provenance["source_version"] == "1.3.2"
+
+
+def test_build_ergo_release_versions_in_both_manifests():
+    from release_builder import build
+
+    source = source_archive()
+    archives, _report = build(
+        source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1"
+    )
+    for fmt, manifest_path in (
+        ("agent-plugins", "plugin.json"),
+        ("claude", ".claude-plugin/plugin.json"),
+    ):
+        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-1.3.1.ergo.1-{fmt}.zip"])) as archive:
+            assert json.loads(archive.read(manifest_path))["version"] == "1.3.1.ergo.1"
+
+
 def test_build_preserves_selected_files_in_both_release_layouts():
     from release_builder import build
 
     source = source_archive()
     archives, _report = build(
-        source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1-1"
+        source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1"
     )
     expected_archives = {
-        "skills-for-real-engineers-1.3.1-1-agent-plugins.zip": (
+        "skills-for-real-engineers-1.3.1.ergo.1-agent-plugins.zip": (
             "plugin.json",
             {
                 "skills/alpha/SKILL.md": (ALPHA_SKILL, 0o644),
@@ -97,7 +132,7 @@ def test_build_preserves_selected_files_in_both_release_layouts():
                 "skills/beta/assets/data.bin": (BETA_DATA, 0o644),
             },
         ),
-        "skills-for-real-engineers-1.3.1-1-claude.zip": (
+        "skills-for-real-engineers-1.3.1.ergo.1-claude.zip": (
             ".claude-plugin/plugin.json",
             {
                 "skills/engineering/alpha/SKILL.md": (ALPHA_SKILL, 0o644),
@@ -122,9 +157,10 @@ def test_build_preserves_selected_files_in_both_release_layouts():
                 assert stat.S_ISREG(info.external_attr >> 16), path
                 assert stat.S_IMODE(info.external_attr >> 16) == mode, path
             manifest = json.loads(archive.read(manifest_path))
-            assert manifest["version"] == "1.3.1-1"
+            assert manifest["version"] == "1.3.1.ergo.1"
             assert manifest["author"] == {"name": "Fixture Author"}
             if manifest_path == ".claude-plugin/plugin.json":
+                assert manifest["displayName"] == "Fixture Skills"
                 assert manifest["skills"] == [
                     "./skills/engineering/alpha", "./skills/productivity/beta"
                 ]

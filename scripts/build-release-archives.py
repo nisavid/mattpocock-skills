@@ -218,8 +218,8 @@ def build(raw, expected_sha256, revision, base, release):
     """
     require(re.fullmatch(r"\d+\.\d+\.\d+", base), "invalid base version")
     require(
-        re.fullmatch(re.escape(base) + r"-[1-9]\d*", release),
-        "release must be BASE-positive-integer",
+        re.fullmatch(re.escape(base) + r"\.ergo\.[1-9]\d*", release),
+        "release must be BASE.ergo.positive-integer",
     )
     source, types = read_source(raw, expected_sha256, revision)
     claude = unique_json(source[".claude-plugin/plugin.json"][0])
@@ -229,8 +229,11 @@ def build(raw, expected_sha256, revision, base, release):
         claude.get("name") == native.get("name") == "mattpocock-skills",
         "source plugin name mismatch",
     )
+    source_version = package["version"]
     require(
-        claude["version"] == native["version"] == package["version"] == base,
+        isinstance(source_version, str)
+        and re.fullmatch(r"\d+\.\d+\.\d+", source_version)
+        and claude["version"] == native["version"] == source_version,
         "source version mismatch",
     )
 
@@ -307,6 +310,7 @@ def build(raw, expected_sha256, revision, base, release):
     portable["$schema"] = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
     portable["extensions"] = {"com.openai": {"interface": copy.deepcopy(native["interface"])}}
     projected_claude = copy.deepcopy(claude)
+    projected_claude["displayName"] = native["interface"]["displayName"]
     for manifest in (portable, projected_claude):
         manifest["version"] = release
         manifest["repository"] = "https://github.com/nisavid/mattpocock-skills"
@@ -315,6 +319,7 @@ def build(raw, expected_sha256, revision, base, release):
     report = {
         "source_revision": revision,
         "source_sha256": expected_sha256,
+        "source_version": source_version,
         "base_version": base,
         "release_version": release,
         "archives": {},
@@ -349,6 +354,7 @@ def build(raw, expected_sha256, revision, base, release):
         provenance = {
             "source_revision": revision,
             "source_sha256": expected_sha256,
+            "source_version": source_version,
             "base_version": base,
             "release_version": release,
             "format": format_name,

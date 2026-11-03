@@ -9,6 +9,14 @@ import pytest
 from test_release_builder import REVISION, source_archive
 
 
+def test_build_refuses_inconsistent_source_versions():
+    from release_builder import build
+
+    source = source_archive(source_version="1.3.2", native_version="1.3.3")
+    with pytest.raises(ValueError, match="source version mismatch"):
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.2")
+
+
 @pytest.mark.parametrize(
     "manifest_path", [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]
 )
@@ -37,4 +45,4 @@ def test_build_refuses_missing_or_mismatched_plugin_identity(manifest_path, name
                     replacement.addfile(member)
     source = output.getvalue()
     with pytest.raises(ValueError, match="source plugin name mismatch"):
-        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1-1")
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1")
