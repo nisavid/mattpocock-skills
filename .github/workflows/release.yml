@@ -30,7 +30,6 @@ jobs:
         uses: changesets/action@v1
         with:
           version: npm run version
-          publish: npx changeset tag
           commit: "chore: version skills"
           title: "chore: version skills"
         env:
