@@ -116,7 +116,7 @@ def markdown_targets(data):
     # Preserve the existing export's bounded inline-link scanner.
     fence = ""
     for line_number, line in enumerate(data.decode("utf-8").splitlines(), 1):
-        match = re.match(r"^\s*(`{3,}|~{3,})(.*)$", line)
+        match = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
         if fence:
             if (match and match[1][0] == fence[0] and len(match[1]) >= len(fence)
                     and not match[2].strip()):
