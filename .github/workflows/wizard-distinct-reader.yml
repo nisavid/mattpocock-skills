@@ -1,0 +1,21 @@
+name: Wizard distinct-reader research
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  distinct-reader:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify and run the reviewed synthetic fixture
+        run: |
+          printf '%s  %s\n' '77ef67dcf4f8d91edb3b3777b962a32a08400181e049ba8b3c0aa7c229841a4a' 'tests/research/wizard-distinct-reader.sh' | sha256sum --check --status
+          bash tests/research/wizard-distinct-reader.sh
