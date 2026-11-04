@@ -66,6 +66,17 @@ New files are private (`0600`). Existing files retain their owner, group, mode, 
 
 These safeguards apply to newly generated scripts. Regenerate an older wizard to update its library. Atomic replacement avoids exposing a partially copied destination during an ordinary failed update; it does not promise recovery after power loss or protect against a hostile process moving an already-open project directory elsewhere. Keep the project directory under your control while running a wizard.
 
+**How do I clean up after an interrupted env write?**
+
+In a wizard generated with this fork's current template, an interrupted write can leave a hidden `.wizard-env-` staging folder beside the env file. The folder can contain a partial copy of saved values, including secrets. Its contents are not a backup to restore. The wizard does not automatically remove a folder left by an interrupted run.
+
+1. Stop the interrupted wizard and any other wizard writing in the same directory. Wait for them to exit, and do not restart them during cleanup. Keep the project directory under your control and stop other processes that might change these entries. If you cannot keep the entries stable or establish that all writers have stopped, leave the folder alone. Removing an active staging file can make a running write fail.
+2. Find the env file's confirmed parent directory inside the project. Show hidden files in your file manager. A staging folder is named `.wizard-env-` followed by 32 lowercase hexadecimal characters. The name alone does not prove the folder belongs to your wizard: proceed only if you can associate it with the interrupted run.
+3. Check the folder's properties without opening its files. It should be owned by you, private to you, and a directory rather than a symlink. It may be empty or contain one regular file named `value`. Do not follow symlinks in the path or inside the folder, and do not open, copy, or share `value`. If the path, ownership, permissions, or contents are unexpected, leave them alone for further inspection.
+4. Permanently delete the `value` file, if present, then delete the empty staging folder. Do not delete the env file or replace it with the staged file. Deletion does not erase copies in backups or filesystem snapshots.
+
+Before rerunning the wizard, check the env file's saved values privately. An interruption can happen before or after replacement, and a new env file may not have been created yet. Determine which values were saved rather than assuming the write failed or completed.
+
 **Do my API keys end up in the model's context?**
 
 No. The agent writes a script; it doesn't run it. You run the script yourself, and it captures the key with hidden terminal entry and writes it straight to `.env` or `gh secret`. The wizard is a CLI, and the model is not connected to it. This holds only for values the wizard captures at runtime. If you paste a key into the chat while scoping the procedure, it's in the [context](https://www.aihero.dev/ai-coding-dictionary/context) like any other pasted text.
