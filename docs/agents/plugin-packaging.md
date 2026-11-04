@@ -2,6 +2,8 @@
 
 The repository root delivers the promoted engineering and productivity skills to Claude Code and Codex from their original directories. Both fork marketplace catalogs select `./`. Non-promoted directories remain in the repository; the native manifests expose only the promoted set.
 
+For portable agent-plugins and Claude release ZIPs, use [the release archive procedure](release-archives.md).
+
 ## Inputs and ownership
 
 Use this procedure when generating the Codex manifest after an authorized metadata or packaging change, checking package drift, changing marketplace routing, or preparing a consumer of the packaged skills. Ordinary skill use and unrelated documentation edits do not require generation.
