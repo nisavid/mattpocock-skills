@@ -28,8 +28,8 @@ def test_build_rejects_broken_relocated_skill_link():
     from release_builder import build
 
     valid = archive_with_link("scripts/run.sh")
-    build(valid, hashlib.sha256(valid).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1")
+    build(valid, hashlib.sha256(valid).hexdigest(), REVISION, "1.3.1", "1.3.2+from.1.3.1")
 
     broken = archive_with_link("scripts/missing.sh")
     with pytest.raises(ValueError, match="missing.sh"):
-        build(broken, hashlib.sha256(broken).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1")
+        build(broken, hashlib.sha256(broken).hexdigest(), REVISION, "1.3.1", "1.3.2+from.1.3.1")

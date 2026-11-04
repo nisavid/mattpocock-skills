@@ -8,6 +8,6 @@ def test_build_reproduces_identical_archives_for_identical_source():
 
     source = source_archive()
     digest = hashlib.sha256(source).hexdigest()
-    first, _ = build(source, digest, REVISION, "1.3.1", "1.3.1.ergo.1")
-    second, _ = build(source, digest, REVISION, "1.3.1", "1.3.1.ergo.1")
+    first, _ = build(source, digest, REVISION, "1.3.1", "1.3.2+from.1.3.1")
+    second, _ = build(source, digest, REVISION, "1.3.1", "1.3.2+from.1.3.1")
     assert first == second

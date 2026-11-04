@@ -216,10 +216,17 @@ def build(raw, expected_sha256, revision, base, release):
     raw is one immutable source tarball; expected_sha256 and revision bind
     the caller-selected input. No filesystem writes or network access occur.
     """
-    require(re.fullmatch(r"\d+\.\d+\.\d+", base), "invalid base version")
+    numeric = r"(?:0|[1-9][0-9]*)"
+    base_match = re.fullmatch(rf"({numeric})\.({numeric})\.({numeric})", base)
+    require(base_match, "invalid base version")
+    release_match = re.fullmatch(
+        rf"({numeric})\.({numeric})\.({numeric})\+from\.{re.escape(base)}", release
+    )
+    require(release_match, "invalid release version")
     require(
-        re.fullmatch(re.escape(base) + r"\.ergo\.[1-9]\d*", release),
-        "release must be BASE.ergo.positive-integer",
+        release_match.group(1, 2) == base_match.group(1, 2)
+        and int(release_match.group(3)) > int(base_match.group(3)),
+        "release must retain upstream major and minor and advance its patch",
     )
     source, types = read_source(raw, expected_sha256, revision)
     claude = unique_json(source[".claude-plugin/plugin.json"][0])

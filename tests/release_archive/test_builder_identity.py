@@ -14,7 +14,7 @@ def test_build_refuses_inconsistent_source_versions():
 
     source = source_archive(source_version="1.3.2", native_version="1.3.3")
     with pytest.raises(ValueError, match="source version mismatch"):
-        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.2")
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.3+from.1.3.1")
 
 
 @pytest.mark.parametrize(
@@ -45,4 +45,20 @@ def test_build_refuses_missing_or_mismatched_plugin_identity(manifest_path, name
                     replacement.addfile(member)
     source = output.getvalue()
     with pytest.raises(ValueError, match="source plugin name mismatch"):
-        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.1.ergo.1")
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.2+from.1.3.1")
+
+
+@pytest.mark.parametrize("base,release", [
+    ("1.3.1", "1.3.1.ergo.1"),
+    ("1.3.1", "1.3.2+from.1.3.2"),
+    ("1.3.1", "1.4.2+from.1.3.1"),
+    ("1.3.1", "1.3.1+from.1.3.1"),
+    ("1.3.1", "1.3.02+from.1.3.1"),
+    ("1.03.1", "1.3.2+from.1.03.1"),
+])
+def test_build_refuses_release_versions_outside_policy(base, release):
+    from release_builder import build
+
+    source = source_archive()
+    with pytest.raises(ValueError):
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, base, release)
