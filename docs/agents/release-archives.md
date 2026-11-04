@@ -30,9 +30,17 @@ set -euo pipefail
 test "$(git rev-parse --verify "${SOURCE_COMMIT}^{commit}")" = "$SOURCE_COMMIT"
 procedure_revision=$(git rev-parse HEAD)
 builder="$PWD/scripts/build-release-archives.py"
+git cat-file blob "${procedure_revision}:scripts/build-release-archives.py" | cmp - "$builder"
 mkdir -- "$OUTPUT_DIR"
 output=$(cd -- "$OUTPUT_DIR" && pwd)
 printf '%s\n' "$procedure_revision" > "$output/procedure-revision.txt"
+sha256sum -- "$builder" > "$output/builder.sha256"
+{
+  python3 --version
+  python3 -c 'import yaml; print("PyYAML", yaml.__version__)'
+  git --version
+  gzip --version
+} > "$output/tool-versions.txt"
 git -c tar.umask=0022 archive --format=tar \
   --prefix="mattpocock-skills-${SOURCE_COMMIT}/" "$SOURCE_COMMIT" \
   | gzip -n > "$output/source.tar.gz"

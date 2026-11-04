@@ -104,26 +104,26 @@ def read_source(raw, expected_sha256, revision):
 
 def metadata(skill):
     require(skill.startswith(b"---\n"), "missing skill frontmatter")
-    parts = skill.decode("utf-8").split("---\n", 2)
-    require(len(parts) == 3, "unterminated skill frontmatter")
-    front = yaml.load(parts[1], Loader=UniqueLoader)
+    contents = skill.decode("utf-8")[4:]
+    closing = re.search(r"^---[ \t]*$", contents, re.MULTILINE)
+    require(closing is not None, "unterminated skill frontmatter")
+    front = yaml.load(contents[:closing.start()], Loader=UniqueLoader)
     require(isinstance(front, dict), "frontmatter is not a mapping")
     return front
 
 
 def markdown_targets(data):
     # Preserve the existing export's bounded inline-link scanner.
-    fenced = False
     fence = ""
     for line_number, line in enumerate(data.decode("utf-8").splitlines(), 1):
-        match = re.match(r"^\s*(`{3,}|~{3,})", line)
-        if match:
-            if not fenced:
-                fenced, fence = True, match[1][0]
-            elif match[1][0] == fence:
-                fenced = False
+        match = re.match(r"^\s*(`{3,}|~{3,})(.*)$", line)
+        if fence:
+            if (match and match[1][0] == fence[0] and len(match[1]) >= len(fence)
+                    and not match[2].strip()):
+                fence = ""
             continue
-        if fenced:
+        if match:
+            fence = match[1]
             continue
         pattern = r'(?<!!)\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)'
         for raw_target in re.findall(pattern, line):

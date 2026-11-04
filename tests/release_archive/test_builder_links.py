@@ -33,3 +33,11 @@ def test_build_rejects_broken_relocated_skill_link():
     broken = archive_with_link("scripts/missing.sh")
     with pytest.raises(ValueError, match="missing.sh"):
         build(broken, hashlib.sha256(broken).hexdigest(), REVISION, "1.3.1", "1.3.2+from.1.3.1")
+
+
+def test_build_rejects_link_broken_only_after_flattening():
+    from release_builder import build
+
+    source = archive_with_link("../../productivity/beta/SKILL.md")
+    with pytest.raises(ValueError, match="unresolved relocated link"):
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.2+from.1.3.1")
