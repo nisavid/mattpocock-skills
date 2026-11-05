@@ -1,6 +1,6 @@
 # Issue tracker
 
-Track fork packaging, distribution, and maintenance work in GitHub Issues at `nisavid/mattpocock-skills`. Upstream contributions and upstream tickets require explicit direction. Use `gh-axi` where it supports the operation; use GitHub's API or `gh` for native relationships it cannot express.
+Track fork packaging, distribution, and maintenance work in GitHub Issues at `nisavid/real-skills`. Upstream contributions and upstream tickets require explicit direction. Use `gh-axi` where it supports the operation; use GitHub's API or `gh` for native relationships it cannot express.
 
 ## Conventions
 
