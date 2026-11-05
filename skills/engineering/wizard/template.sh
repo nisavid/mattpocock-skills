@@ -29,7 +29,7 @@ ENV_FILE="${ENV_FILE:-.env}"
 _WIZARD_CONFIGURED=0
 _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
 _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
-_WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=()
+_WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=(); _WIZARD_EXPORT_ATTRS=()
 WRITTEN_ENV=()    # successful KEY and destination records
 WRITTEN_SECRET=() # successful secret NAME and destination records
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
@@ -108,8 +108,10 @@ _wizard_helper() (
     _WIZARD_DECL=$(declare -p "$_WIZARD_NAME" 2>/dev/null) || _WIZARD_DECL=""
     _WIZARD_DECL=${_WIZARD_DECL#declare -}
     _WIZARD_ATTR=${_WIZARD_DECL%% *}
+    _WIZARD_ATTR=${_WIZARD_ATTR//-/}
+    [[ "${_WIZARD_ATTR//x/}" == "${_WIZARD_EXPORT_ATTRS[$_WIZARD_INDEX]}" ]] || return 2
     case "$_WIZARD_ATTR" in
-      *r*) export "$_WIZARD_NAME" || return 2 ;;
+      *r*) [[ "${!_WIZARD_NAME}" == "${_WIZARD_EXPORT_VALUES[$_WIZARD_INDEX]}" ]] || return 2; export "$_WIZARD_NAME" || return 2 ;;
       *) export "$_WIZARD_NAME=${_WIZARD_EXPORT_VALUES[$_WIZARD_INDEX]}" || return 2 ;;
     esac
   done
@@ -327,7 +329,7 @@ _revoke_destinations() {
   _WIZARD_CONFIGURED=0
   _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
   _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
-  _WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=()
+  _WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=(); _WIZARD_EXPORT_ATTRS=()
   exec 8<&- 9<&-
 }
 
@@ -392,6 +394,7 @@ configure_destinations() {
     esac
     _WIZARD_EXPORT_NAMES+=("$_WIZARD_NAME")
     _WIZARD_EXPORT_VALUES+=("${!_WIZARD_NAME}")
+    _WIZARD_EXPORT_ATTRS+=("${_WIZARD_ATTR//x/}")
   done < <(compgen -e)
   # Pin the displayed directory before waiting for input, without reading values.
   _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"

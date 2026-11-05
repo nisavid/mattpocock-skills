@@ -195,6 +195,24 @@ test("destination setup refuses an exported nameref", (t) => {
   assert.deepEqual(f.ghCalls(), []);
 });
 
+test("helper calls refuse changes to captured variable attributes", (t) => {
+  const changes = [
+    "GH_CONFIG_DIR=changed; readonly GH_CONFIG_DIR",
+    "unset GH_CONFIG_DIR; declare -ix GH_CONFIG_DIR=2",
+    "unset GH_CONFIG_DIR; declare -ax GH_CONFIG_DIR=(changed)",
+  ];
+  const capability = spawnSync("bash", ["-c", "if declare -n probe=target 2>/dev/null; then exit 0; else exit 77; fi"], { encoding: "utf8" });
+  assert.equal(capability.error, undefined, capability.error?.message);
+  assert.ok(capability.status === 0 || capability.status === 77, capability.stderr);
+  if (capability.status === 0) changes.push("unset GH_CONFIG_DIR; OTHER=changed; declare -nx GH_CONFIG_DIR=OTHER");
+  for (const change of changes) {
+    const f = fixture(t);
+    const result = f.run(`configure_destinations "$2" example/project\n${change}\nif set_secret DUMMY_SECRET synthetic-value; then exit 90; fi`, { input: "yes\n", env: { GH_CONFIG_DIR: "original-config" } });
+    succeeded(result);
+    assert.deepEqual(f.ghCalls(), [], change);
+  }
+});
+
 test("destination preview is visible before the human confirms", async (t) => {
   const f = fixture(t);
   mkdirSync(join(f.project, "config"));
