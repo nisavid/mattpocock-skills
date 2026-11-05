@@ -46,7 +46,9 @@ The tracker options:
 
 The first three ship as templates in the skill and work out of the box. Local markdown is a full option, not a fallback. The skill supports a solo project with no remote. One caveat: don't use local markdown if you use GitHub. They are alternatives, so pick one.
 
-If you choose GitHub or GitLab and no remote points to that host, the agent asks for the repository URL, initializes Git if needed, and adds it as `origin`. It then checks that `gh` or `glab` can resolve the project from this directory. If the check fails, it stops and explains what setup is missing.
+If you choose GitHub or GitLab, the agent confirms the exact project and checks that `gh` or `glab` can resolve it. If no remote points to that host, it asks for the repository URL, initializes Git if needed, and adds a remote under an unused name. Existing remotes are preserved. The tracker instructions then target the confirmed project explicitly. If the check fails, setup stops and explains what is missing.
+
+If a legacy context map exists, setup can offer a migration of the map and its mapped context glossaries. It shows the proposed file moves and reference updates for your confirmation, and stops on unsafe paths or destination conflicts instead of overwriting files.
 
 The GitHub and GitLab templates keep PR/MR discovery off by default. Enabling discovery does not authorize execution: `triage` requires disposable isolation before checking out or running contributed code, and records checks as not run when isolation is unavailable. Existing tracker configs can carry the same reminder when you refresh them.
 
