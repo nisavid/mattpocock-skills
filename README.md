@@ -22,6 +22,8 @@ If you want to keep up with changes to these skills, and any new ones I create, 
 
 [Sign Up To The Newsletter](https://www.aihero.dev/s/skills-newsletter)
 
+The installation instructions below install Matt Pocock's upstream [Skills for Real Engineers](https://github.com/mattpocock/skills). Installation of this fork, Real Skills [Leashed], has not yet been qualified.
+
 ## Installation (30-second setup)
 
 A plugin updates itself. [skills.sh](https://skills.sh/mattpocock/skills) copies editable files into your project, and you update them by hand. Pick one per agent, because installing both gives you every skill twice.
