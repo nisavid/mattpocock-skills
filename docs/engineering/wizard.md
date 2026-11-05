@@ -21,7 +21,7 @@ Don't reach for it to *decide* what to build; for that, [grill-with-docs](https:
 
 ## Prerequisites
 
-None to generate one. Run the generated wizard using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the project directory you confirm before the first stage. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers. If a shell variable is already exported, the updated value stays exported and later child processes inherit it. Wizard variables must be assignable plain scalars; readonly, nameref, integer, array, and value-transforming targets are refused.
+None to generate one. Run the generated wizard using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the project directory you confirm before the first stage. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers. If a shell variable is already exported, the updated value stays exported and later child processes inherit it. Wizard variables must be assignable plain scalars; readonly, nameref, integer, array, and value-transforming targets are refused. `ENV_FILE` and names beginning `_WIZARD_` are reserved for the wizard.
 
 The wizard uses `gh` when a stage sets a GitHub secret or variable. If `gh` is missing or not authenticated, the run does not fail. That stage shows a warning, and the closing summary tells you what to set by hand.
 

@@ -415,7 +415,8 @@ _ask_value() {
 # a default on re-runs (Enter keeps it). Visible input (non-secret), edited
 # with Readline. Fails at EOF with no input. Targets must be assignable scalar
 # identifiers without readonly, nameref, integer, array, or value-transforming
-# attributes. Existing export attributes are preserved.
+# attributes. ENV_FILE and names beginning _WIZARD_ are reserved for the
+# wizard. Existing export attributes are preserved.
 ask() {
   _require_destinations || return "$?"
   if ! _can_assign_literal "${1:-}" 2>/dev/null; then
@@ -467,6 +468,8 @@ _write_env_file() {
 
 _can_assign_literal() (
   [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+  # Destination authority belongs to the wizard, never to a prompted value.
+  case "$1" in ENV_FILE|_WIZARD_*) return 1 ;; esac
   # Reject namerefs and non-scalar or non-literal variable attributes.
   if [[ $(declare -p "$1" 2>/dev/null) =~ ^declare[[:space:]]-([a-zA-Z]+)[[:space:]] ]]; then
     [[ "${BASH_REMATCH[1]}" != *[aAirn]* ]] || return 1

@@ -67,6 +67,32 @@ function succeeded(result) {
   assert.equal(result.status, 0, result.stderr || result.stdout);
 }
 
+test("wizard input cannot replace the confirmed repository", (t) => {
+  const f = fixture(t);
+  const result = f.run('configure_destinations "$2" example/project\nif write_env _WIZARD_REPO github.com/other/repo; then exit 90; fi\nset_secret DUMMY_SECRET dummy-secret\nset_var DUMMY_VAR dummy-value', { input: "yes\n" });
+  succeeded(result);
+  assert.equal(existsSync(join(f.project, ".env")), false);
+  const writes = f.ghCalls().filter(({ args }) => args[1] === "set");
+  assert.equal(writes.length, 2);
+  for (const { args } of writes) assert.equal(args[args.indexOf("--repo") + 1], "github.com/example/project");
+});
+
+test("reserved destination names are refused before input or writes", (t) => {
+  for (const name of ["ENV_FILE", "_WIZARD_ROOT", "_WIZARD_ENV_FILE", "_WIZARD_REPO", "_WIZARD_CONFIGURED", "_WIZARD_FUTURE"]) {
+    for (const operation of [`ask ${name} prompt`, `ask_secret ${name} prompt`, `write_env ${name} dummy-value`]) {
+      const f = fixture(t);
+      const result = f.run(`configure_destinations "$2" example/project\nif ${operation}; then exit 90; fi\nIFS= read -r remaining\n[[ "$remaining" == sentinel ]] || exit 91\nset_secret DUMMY_SECRET dummy-secret\nset_var DUMMY_VAR dummy-value`, { input: "yes\nsentinel\n" });
+      succeeded(result);
+      assert.equal(existsSync(join(f.project, ".env")), false, `${operation} wrote an env file`);
+      const calls = f.ghCalls();
+      assert.equal(calls.length, 4, `${operation} made an unexpected GitHub call`);
+      const writes = calls.filter(({ args }) => args[1] === "set");
+      assert.equal(writes.length, 2);
+      for (const { args } of writes) assert.equal(args[args.indexOf("--repo") + 1], "github.com/example/project");
+    }
+  }
+});
+
 test("destination preview is visible before the human confirms", async (t) => {
   const f = fixture(t);
   mkdirSync(join(f.project, "config"));
