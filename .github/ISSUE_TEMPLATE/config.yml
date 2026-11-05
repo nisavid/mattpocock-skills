@@ -1,14 +1,17 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: Question or "how do I...?"
+  - name: Report a fork packaging or maintenance issue
+    url: https://github.com/nisavid/real-skills/issues
+    about: Open a blank issue for problems with this fork, its packaging, or its installation.
+  - name: Upstream question or "how do I...?"
     url: https://github.com/mattpocock/skills/discussions/categories/q-a
     about: Ask in Q&A. Issues are for bugs and changes to existing skills only.
-  - name: New skill idea, or a skill you want to donate
+  - name: Upstream skill idea or donation
     url: https://github.com/mattpocock/skills/discussions/categories/ideas
     about: Post it in Ideas. New skills do not start as issues.
-  - name: Support for another harness or issue tracker
+  - name: Upstream support for another harness or issue tracker
     url: https://github.com/mattpocock/skills/discussions/categories/ideas
     about: Post it in Ideas. Read the out-of-scope notes first, most trackers are already ruled out.
-  - name: Is my request out of scope?
+  - name: Is my upstream request out of scope?
     url: https://github.com/mattpocock/skills/blob/main/SCOPE.md
-    about: The bar every issue must clear, and the requests this repo has already decided not to take.
+    about: Read the upstream issue scope and requests the upstream project has ruled out.
