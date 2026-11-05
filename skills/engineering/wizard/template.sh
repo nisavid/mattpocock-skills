@@ -15,10 +15,10 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────────────────
 
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
-  BOLD=$(tput bold); DIM=$(tput dim); RESET=$(tput sgr0)
-  BLUE=$(tput setaf 4); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3)
+  _WIZARD_FMT_BOLD=$(tput bold); _WIZARD_FMT_DIM=$(tput dim); _WIZARD_FMT_RESET=$(tput sgr0)
+  _WIZARD_FMT_BLUE=$(tput setaf 4); _WIZARD_FMT_GREEN=$(tput setaf 2); _WIZARD_FMT_YELLOW=$(tput setaf 3)
 else
-  BOLD=""; DIM=""; RESET=""; BLUE=""; GREEN=""; YELLOW=""
+  _WIZARD_FMT_BOLD=""; _WIZARD_FMT_DIM=""; _WIZARD_FMT_RESET=""; _WIZARD_FMT_BLUE=""; _WIZARD_FMT_GREEN=""; _WIZARD_FMT_YELLOW=""
 fi
 
 # Author sets this at the top of the stages section.
@@ -45,11 +45,11 @@ _clear() {
 # banner "Title" shows the opening frame: what this wizard does.
 banner() {
   _clear
-  printf '\n%s%s  %s%s\n' "$BOLD" "$BLUE" "$1" "$RESET"
-  printf '%s  %s stages%s\n\n' "$DIM" "$TOTAL_STAGES" "$RESET"
-  printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$DIM"
+  printf '\n%s%s  %s%s\n' "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$1" "$_WIZARD_FMT_RESET"
+  printf '%s  %s stages%s\n\n' "$_WIZARD_FMT_DIM" "$TOTAL_STAGES" "$_WIZARD_FMT_RESET"
+  printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$_WIZARD_FMT_DIM"
   printf '  captures the values you copy back. Stop any time with Ctrl-C and re-run\n'
-  printf '  later, since it remembers values already saved.%s\n' "$RESET"
+  printf '  later, since it remembers values already saved.%s\n' "$_WIZARD_FMT_RESET"
   pause "Ready to start?"
 }
 
@@ -59,20 +59,20 @@ stage() {
   _clear
   _STAGE_INDEX=$((_STAGE_INDEX + 1))
   printf '\n%s%s▸ Stage %s/%s · %s%s\n' \
-    "$BOLD" "$BLUE" "$_STAGE_INDEX" "$TOTAL_STAGES" "$1" "$RESET"
+    "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$_STAGE_INDEX" "$TOTAL_STAGES" "$1" "$_WIZARD_FMT_RESET"
 }
 
 # say "..." prints a plain instruction line.
 say()  { printf '  %s\n' "$1"; }
 # step "..." is a numbered-feeling action the human takes in the browser.
-step() { printf '  %s•%s %s\n' "$BLUE" "$RESET" "$1"; }
-note() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
-warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; }
+step() { printf '  %s•%s %s\n' "$_WIZARD_FMT_BLUE" "$_WIZARD_FMT_RESET" "$1"; }
+note() { printf '  %s%s%s\n' "$_WIZARD_FMT_DIM" "$1" "$_WIZARD_FMT_RESET"; }
+warn() { printf '  %s⚠ %s%s\n' "$_WIZARD_FMT_YELLOW" "$1" "$_WIZARD_FMT_RESET"; }
 
 # open_url URL opens it in the human's browser, cross-platform incl. WSL.
 open_url() {
   local url="$1"
-  printf '  %s↗ opening%s %s\n' "$GREEN" "$RESET" "$url"
+  printf '  %s↗ opening%s %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$url"
   { if   command -v wslview     >/dev/null 2>&1; then wslview "$url"
     elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe "$url"
     elif command -v xdg-open    >/dev/null 2>&1; then xdg-open "$url"
@@ -83,14 +83,14 @@ open_url() {
 
 # pause "msg" waits for the human to confirm they've done the manual part.
 pause() {
-  printf '  %s%s%s ' "$DIM" "${1:-Press Enter to continue}" "$RESET"
+  printf '  %s%s%s ' "$_WIZARD_FMT_DIM" "${1:-Press Enter to continue}" "$_WIZARD_FMT_RESET"
   read -r _ || true
 }
 
 # confirm "question" is a y/N gate; returns success on yes.
 confirm() {
   local reply=""
-  printf '  %s? %s [y/N] ' "$YELLOW" "$1"
+  printf '  %s? %s [y/N] ' "$_WIZARD_FMT_YELLOW" "$1"
   read -r reply || true
   [[ "$reply" =~ ^[Yy] ]]
 }
@@ -436,16 +436,16 @@ _ask_value() {
   _WIZARD_PROMPT_CURRENT=$(_existing "$_WIZARD_PROMPT_KEY") || { _WIZARD_PROMPT_RC=$?; (( _WIZARD_PROMPT_RC == 1 )) || return "$_WIZARD_PROMPT_RC"; _WIZARD_PROMPT_RC=0; }
   if [[ "$_WIZARD_PROMPT_MODE" == secret ]]; then
     if [[ -n "$_WIZARD_PROMPT_CURRENT" ]]; then
-      printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$_WIZARD_PROMPT_TEXT" "$RESET" "$DIM" "$RESET"
+      printf '  %s%s%s %s[Enter keeps current]%s ' "$_WIZARD_FMT_BOLD" "$_WIZARD_PROMPT_TEXT" "$_WIZARD_FMT_RESET" "$_WIZARD_FMT_DIM" "$_WIZARD_FMT_RESET"
     else
-      printf '  %s%s%s ' "$BOLD" "$_WIZARD_PROMPT_TEXT" "$RESET"
+      printf '  %s%s%s ' "$_WIZARD_FMT_BOLD" "$_WIZARD_PROMPT_TEXT" "$_WIZARD_FMT_RESET"
     fi
     read -rs _WIZARD_PROMPT_INPUT || _WIZARD_PROMPT_RC=1
     printf '\n'
   else
     # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
-    _WIZARD_PROMPT_P="  $_WIZARD_PROMPT_S$BOLD$_WIZARD_PROMPT_E$_WIZARD_PROMPT_TEXT$_WIZARD_PROMPT_S$RESET$_WIZARD_PROMPT_E "
-    [[ -n "$_WIZARD_PROMPT_CURRENT" ]] && _WIZARD_PROMPT_P+="$_WIZARD_PROMPT_S$DIM$_WIZARD_PROMPT_E[Enter keeps current]$_WIZARD_PROMPT_S$RESET$_WIZARD_PROMPT_E "
+    _WIZARD_PROMPT_P="  $_WIZARD_PROMPT_S$_WIZARD_FMT_BOLD$_WIZARD_PROMPT_E$_WIZARD_PROMPT_TEXT$_WIZARD_PROMPT_S$_WIZARD_FMT_RESET$_WIZARD_PROMPT_E "
+    [[ -n "$_WIZARD_PROMPT_CURRENT" ]] && _WIZARD_PROMPT_P+="$_WIZARD_PROMPT_S$_WIZARD_FMT_DIM$_WIZARD_PROMPT_E[Enter keeps current]$_WIZARD_PROMPT_S$_WIZARD_FMT_RESET$_WIZARD_PROMPT_E "
     read -e -r -p "$_WIZARD_PROMPT_P" _WIZARD_PROMPT_INPUT || _WIZARD_PROMPT_RC=1
   fi
   if (( _WIZARD_PROMPT_RC )) && [[ -z "$_WIZARD_PROMPT_INPUT" ]]; then return 1; fi
@@ -515,7 +515,7 @@ write_env() {
   fi
   _write_env_file "$@" || return "$?"
   printf -v "$1" '%s' "$2" || return "$?"
-  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$1" "$ENV_FILE"
+  printf '  %s✓ wrote%s %s → %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$1" "$ENV_FILE"
 }
 
 # set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
@@ -531,7 +531,7 @@ set_secret() {
   if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
     if printf '%s' "$_WIZARD_SET_VALUE" | _wizard_helper "$_WIZARD_GH" secret set "$_WIZARD_SET_NAME" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
       WRITTEN_SECRET+=("$_WIZARD_SET_NAME → $_WIZARD_REPO")
-      printf '  %s✓ set%s GitHub secret %s → %s\n' "$GREEN" "$RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
+      printf '  %s✓ set%s GitHub secret %s → %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
       return
     fi
   fi
@@ -550,7 +550,7 @@ set_var() {
   fi
   if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
     if _wizard_helper "$_WIZARD_GH" variable set "$_WIZARD_SET_NAME" --body "$_WIZARD_SET_VALUE" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
-      printf '  %s✓ set%s GitHub variable %s → %s\n' "$GREEN" "$RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
+      printf '  %s✓ set%s GitHub variable %s → %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
       return
     fi
   fi
@@ -562,7 +562,7 @@ set_var() {
 finish() {
   local s
   _clear
-  printf '\n%s%s  ✓ Setup complete%s\n' "$BOLD" "$GREEN" "$RESET"
+  printf '\n%s%s  ✓ Setup complete%s\n' "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET"
   if (( ${#WRITTEN_ENV[@]} )); then
     note "wrote ${#WRITTEN_ENV[@]} value(s):"
     for s in "${WRITTEN_ENV[@]}"; do note "  - $s"; done

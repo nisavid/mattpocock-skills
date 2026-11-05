@@ -338,6 +338,26 @@ test("write_env refuses integer targets without evaluating input", (t) => {
   assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
 });
 
+test("secret targets matching display names never enter subsequent output", async (t) => {
+  for (const name of ["BOLD", "DIM", "RESET", "BLUE", "GREEN", "YELLOW"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const secret = "synthetic-private-display-value";
+    const result = f.run(`ask_secret ${name} prompt\n[[ "$${name}" == ${secret} ]]\nwrite_env ${name} "$${name}"\n[[ "$${name}" == ${secret} ]]\nbanner synthetic-banner\nstage synthetic-stage\nstep synthetic-step\nnote synthetic-note\nwarn synthetic-warning\nfinish`, { input: secret + "\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+    assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `${name}='${secret}'\n`);
+  });
+});
+
+test("display-named secret retains its export attribute", (t) => {
+  const f = fixture(t);
+  const secret = "synthetic-private-export-value";
+  const result = f.run(`ask_secret GREEN prompt\nwrite_env GREEN "$GREEN"\nbash -c '[[ "$GREEN" == ${secret} ]]'\nfinish`, { input: secret + "\n", env: { GREEN: "original-export" } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `GREEN='${secret}'\n`);
+});
+
 test("value helpers accept exported names matching helper locals", async (t) => {
   for (const operation of ["ask", "ask_secret", "write_env"]) for (const declaration of ["export key=42", ...["key", "prompt", "mode", "current", "input", "s", "e", "p", "rc", "value", "destination", "__wizard_ask_result", "__wizard_ask_result2"].map((name) => `declare -ix ${name}=42`)]) await t.test(`${operation}: ${declaration}`, (t) => {
     const f = fixture(t);
