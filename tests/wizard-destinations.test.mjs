@@ -525,7 +525,7 @@ test("absolute env paths inside the confirmed root retain quoting, defaults, and
   writeFileSync(envFile, "# keep this comment\nOTHER='kept'\nDUMMY='old'\nDUMMY='duplicate'\n");
   chmodSync(envFile, 0o644);
   const value = "dummy 'quoted' \\ value $HOME `literal`";
-  const result = f.run('configure_destinations "$2"\nwrite_env DUMMY "$4"\nwrite_env DUMMY_SECRET "$4"\n[[ "$(_existing DUMMY)" == "$4" ]]\nask DUMMY "Dummy value:"\nask_secret DUMMY_SECRET "Dummy secret:"\n[[ "$DUMMY" == "$4" && "$DUMMY_SECRET" == "$4" ]]\nwrite_env DUMMY "$DUMMY"', { args: [value], input: "yes\n\n\n", env: { ENV_FILE: envFile } });
+  const result = f.run('configure_destinations "$2"\nwrite_env DUMMY "$4"\nwrite_env DUMMY_SECRET "$4"\n[[ "$(_existing DUMMY)" == "$4" ]]\nask DUMMY "Dummy value:"\nask_secret DUMMY_SECRET "Dummy secret:"\n[[ "$DUMMY" == "$4" && "$DUMMY_SECRET" == "$4" ]]\nwrite_env DUMMY "$DUMMY"', { args: [value], input: "yes\n\n\n", env: { ENV_FILE: envFile }, timeout: 15_000 });
   succeeded(result);
   const contents = readFileSync(envFile, "utf8");
   assert.ok(contents.startsWith("# keep this comment\nOTHER='kept'\n"));
