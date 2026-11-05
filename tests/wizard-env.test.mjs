@@ -312,6 +312,10 @@ test("write_env refuses array targets without changing the file or ledger", (t) 
 });
 
 test("write_env refuses namerefs without evaluating their targets", (t) => {
+  const capability = spawnSync("bash", ["-c", "if declare -n probe=target 2>/dev/null; then exit 0; else exit 77; fi"], { encoding: "utf8" });
+  assert.equal(capability.error, undefined, capability.error?.message);
+  if (capability.status === 77) return t.skip("the selected Bash does not support namerefs");
+  assert.equal(capability.status, 0, capability.stderr);
   const f = fixture(t);
   const original = "TOKEN='synthetic-before'\n";
   f.put(".env", original);
