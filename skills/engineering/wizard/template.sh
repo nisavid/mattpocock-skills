@@ -388,43 +388,75 @@ _existing() {
   _env_file read "$1"
 }
 
-# ask KEY "Prompt" reads a value into $KEY. Offers the existing .env value as
-# a default on re-runs (Enter keeps it). Visible input (non-secret), edited
-# with Readline. Fails at EOF with no input.
-ask() {
-  _require_destinations || return "$?"
-  local key="$1" prompt="$2" current input s=$'\001' e=$'\002' p rc=0
+# _ask_value KEY PROMPT MODE RESULT captures input into its caller's result.
+_ask_value() {
+  local key="$1" prompt="$2" mode="$3" current input s=$'\001' e=$'\002' p rc=0
   current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
-  # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
-  p="  $s$BOLD$e$prompt$s$RESET$e "
-  [[ -n "$current" ]] && p+="$s$DIM$e[Enter keeps current]$s$RESET$e "
-  read -e -r -p "$p" input || rc=1
+  if [[ "$mode" == secret ]]; then
+    if [[ -n "$current" ]]; then
+      printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
+    else
+      printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+    fi
+    read -rs input || rc=1
+    printf '\n'
+  else
+    # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
+    p="  $s$BOLD$e$prompt$s$RESET$e "
+    [[ -n "$current" ]] && p+="$s$DIM$e[Enter keeps current]$s$RESET$e "
+    read -e -r -p "$p" input || rc=1
+  fi
   if (( rc )) && [[ -z "$input" ]]; then return 1; fi
   [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$key" '%s' "$input"
+  printf -v "$4" '%s' "$input"
+}
+
+# ask KEY "Prompt" reads a value into $KEY. Offers the existing .env value as
+# a default on re-runs (Enter keeps it). Visible input (non-secret), edited
+# with Readline. Fails at EOF with no input. Targets must be assignable scalar
+# identifiers without readonly, nameref, integer, array, or value-transforming
+# attributes. Existing export attributes are preserved.
+ask() {
+  _require_destinations || return "$?"
+  if ! _can_assign_literal "${1:-}" 2>/dev/null; then
+    warn "Cannot assign the input to the requested variable" >&2
+    return 2
+  fi
+  if [[ "$1" == __wizard_ask_result ]]; then
+    local __wizard_ask_result2
+    _ask_value "$1" "$2" visible __wizard_ask_result2 || return "$?"
+    printf -v "$1" '%s' "$__wizard_ask_result2"
+  else
+    local __wizard_ask_result
+    _ask_value "$1" "$2" visible __wizard_ask_result || return "$?"
+    printf -v "$1" '%s' "$__wizard_ask_result"
+  fi
 }
 
 # ask_secret KEY "Prompt" is like ask, but input is hidden.
 ask_secret() {
   _require_destinations || return "$?"
-  local key="$1" prompt="$2" current input rc=0
-  current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
-  if [[ -n "$current" ]]; then
-    printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
-  else
-    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+  if ! _can_assign_literal "${1:-}" 2>/dev/null; then
+    warn "Cannot assign the input to the requested variable" >&2
+    return 2
   fi
-  read -rs input || rc=1
-  printf '\n'
-  if (( rc )) && [[ -z "$input" ]]; then return 1; fi
-  [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$key" '%s' "$input"
+  if [[ "$1" == __wizard_ask_result ]]; then
+    local __wizard_ask_result2
+    _ask_value "$1" "$2" secret __wizard_ask_result2 || return "$?"
+    printf -v "$1" '%s' "$__wizard_ask_result2"
+  else
+    local __wizard_ask_result
+    _ask_value "$1" "$2" secret __wizard_ask_result || return "$?"
+    printf -v "$1" '%s' "$__wizard_ask_result"
+  fi
 }
 
 # write_env KEY VALUE upserts KEY='VALUE' into ENV_FILE (replaces any existing
 # line) and sets $KEY. Idempotent. New files use mode 0600. Existing access permissions are
 # retained, but atomic replacement changes the inode and breaks hard links.
 # Symlinked destinations and paths outside the confirmed project are refused.
+# The target has the same assignable-scalar restrictions as ask; its existing
+# export attribute is preserved.
 _write_env_file() {
   _require_destinations || return "$?"
   local key="$1" value="$2" destination
@@ -433,7 +465,21 @@ _write_env_file() {
   WRITTEN_ENV+=("$destination")
 }
 
+_can_assign_literal() (
+  [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+  # Reject namerefs and non-scalar or non-literal variable attributes.
+  if [[ $(declare -p "$1" 2>/dev/null) =~ ^declare[[:space:]]-([a-zA-Z]+)[[:space:]] ]]; then
+    [[ "${BASH_REMATCH[1]}" != *[aAirn]* ]] || return 1
+  fi
+  printf -v "$1" '%s' '__WiZaRd_Assignment_Probe__' || return 1
+  [[ "${!1}" == __WiZaRd_Assignment_Probe__ ]]
+)
+
 write_env() {
+  if ! _can_assign_literal "${1:-}" 2>/dev/null; then
+    warn "Cannot assign the environment value to the requested variable" >&2
+    return 2
+  fi
   _write_env_file "$@" || return "$?"
   printf -v "$1" '%s' "$2" || return "$?"
   printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$1" "$ENV_FILE"

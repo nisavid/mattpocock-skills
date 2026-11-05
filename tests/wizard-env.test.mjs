@@ -243,6 +243,44 @@ test("defaults use the last assignment and undo write_env's apostrophe quoting",
   });
 });
 
+test("ask and ask_secret assign caller variables even when names match helper locals", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) for (const name of ["key", "prompt", "mode", "current", "input", "s", "e", "p", "rc", "__wizard_ask_result", "__wizard_ask_result2"]) await t.test(`${operation} ${name}`, (t) => {
+    const f = fixture(t);
+    const result = f.run(`${name}=synthetic-before\n${operation} ${name} 'Synthetic prompt:'\n[[ "$${name}" == synthetic-answer ]]`, { input: "synthetic-answer\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-answer/);
+  });
+});
+
+test("ask and ask_secret reject integer targets before reading or evaluating input", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) await t.test(operation, (t) => {
+    const f = fixture(t);
+    const result = f.run(`declare -a a=(0)\ndeclare -i TOKEN=0\nif ${operation} TOKEN 'Synthetic prompt:'; then rc=0; else rc=$?; fi\nread -r remaining\n[[ "$remaining" == 'a[$(touch injected-marker)]' && "$rc" -ne 0 ]]`, { input: "a[$(touch injected-marker)]\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.throws(() => lstatSync(join(f.root, "injected-marker")), { code: "ENOENT" });
+    assert.doesNotMatch(result.stdout + result.stderr, /touch injected-marker/);
+  });
+});
+
+test("ask and ask_secret retain defaults for caller names that match helper locals", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) for (const name of ["key", "input", "__wizard_ask_result", "__wizard_ask_result2"]) await t.test(`${operation} ${name}`, (t) => {
+    const f = fixture(t);
+    f.put(".env", `${name}='synthetic-default'\n`);
+    const result = f.run(`${name}=synthetic-before\n${operation} ${name} 'Synthetic prompt:'\n[[ "$${name}" == synthetic-default ]]`, { input: "\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-default/);
+  });
+});
+
+test("ask and ask_secret leave caller values unchanged on EOF", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) await t.test(operation, (t) => {
+    const f = fixture(t);
+    const result = f.run(`key=synthetic-before\nif ${operation} key 'Synthetic prompt:'; then exit 1; fi\n[[ "$key" == synthetic-before ]]`, { input: "" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-before/);
+  });
+});
+
 test("ask retains a safe double-quoted saved default without literal quotes", (t) => {
   const f = fixture(t);
   f.put(".env", 'TOKEN="synthetic saved value"\n');
@@ -251,12 +289,64 @@ test("ask retains a safe double-quoted saved default without literal quotes", (t
   assert.match(result.stdout, /KEPT_DEFAULT/);
 });
 
+test("write_env refuses readonly targets before changing the file or success ledger", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\nOTHER=unchanged\n";
+  f.put(".env", original);
+  const result = f.run(`readonly TOKEN=synthetic-original\nif write_env TOKEN synthetic-after; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.doesNotMatch(result.stdout, /✓ wrote/);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+});
+
+test("write_env refuses array targets without changing the file or ledger", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\n";
+  f.put(".env", original);
+  const result = f.run(`declare -a TOKEN=(synthetic-original)\nif write_env TOKEN synthetic-after; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic-after/);
+});
+
+test("write_env refuses namerefs without evaluating their targets", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\n";
+  f.put(".env", original);
+  const result = f.run(`declare -a a=(0)\ndeclare -n TOKEN='a[$(touch injected-marker)]'\nif write_env TOKEN synthetic-value; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.throws(() => lstatSync(join(f.root, "injected-marker")), { code: "ENOENT" });
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic-value/);
+});
+
+test("write_env refuses integer targets without evaluating input", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\n";
+  f.put(".env", original);
+  const result = f.run(`declare -a a=(0)\ndeclare -i TOKEN=0\nif write_env TOKEN 'a[$(touch injected-marker)]'; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.throws(() => lstatSync(join(f.root, "injected-marker")), { code: "ENOENT" });
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+});
+
 test("write_env updates the caller-visible value after a successful write", (t) => {
   const f = fixture(t);
   const result = f.run(`TOKEN=synthetic-old\nwrite_env TOKEN synthetic-new\n[[ "$TOKEN" == synthetic-new ]]\nprintf 'UPDATED\\n'`);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /UPDATED/);
   assert.equal(readFileSync(join(f.root, ".env"), "utf8"), "TOKEN='synthetic-new'\n");
+});
+
+test("write_env preserves whether a target is exported", (t) => {
+  const f = fixture(t);
+  const result = f.run(`export TOKEN=synthetic-before\nwrite_env TOKEN synthetic-updated\nbash -c '[[ "$TOKEN" == synthetic-updated ]]'\nLOCAL_TOKEN=synthetic-before\nexport -n LOCAL_TOKEN\nwrite_env LOCAL_TOKEN synthetic-updated\nbash -c '[[ -z "\${LOCAL_TOKEN+x}" ]]'`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic-updated/);
 });
 
 test("write_env updates caller variables even when their names match helper locals", async (t) => {
