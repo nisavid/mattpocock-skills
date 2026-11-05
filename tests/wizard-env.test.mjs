@@ -338,6 +338,39 @@ test("write_env refuses integer targets without evaluating input", (t) => {
   assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
 });
 
+test("captured values cannot replace authored stage progress", async (t) => {
+  for (const name of ["TOTAL_STAGES", "_STAGE_INDEX", "DUMMY"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const secret = "424242";
+    const script = library + `\nTOTAL_STAGES=3\nconfigure_destinations "$PWD" >/dev/null <<< yes\nask_secret ${name} prompt\nwrite_env ${name} "$${name}"\n[[ "$${name}" == ${secret} ]]\nconfigure_destinations "$PWD" >/dev/null <<< yes\nbanner sample </dev/null\nstage sample\nstage second\n[[ "$${name}" == ${secret} ]]\nfinish`;
+    const result = spawnSync("bash", ["-c", script], { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, input: secret + "\n", encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /424242|424243/);
+    assert.match(result.stdout, /3 stages/);
+    assert.match(result.stdout, /Stage 1\/3/);
+    assert.match(result.stdout, /Stage 2\/3/);
+    assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `${name}='${secret}'\n`);
+  });
+});
+
+test("wizard state arrays cannot receive captured values", async (t) => {
+  for (const name of ["WRITTEN_ENV", "WRITTEN_SECRET", "SKIPPED"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const result = f.run(`if ask_secret ${name} prompt; then exit 90; fi\nIFS= read -r remaining\n[[ "$remaining" == sentinel ]]\nif write_env ${name} synthetic-value; then exit 91; fi`, { input: "sentinel\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /sentinel|synthetic-value/);
+    assert.throws(() => lstatSync(join(f.root, ".env")), { code: "ENOENT" });
+  });
+});
+
+test("an invalid authored stage count stops configuration", (t) => {
+  const f = fixture(t);
+  const result = spawnSync("bash", ["-c", library + '\nTOTAL_STAGES=invalid\nconfigure_destinations "$PWD"'], { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, input: "yes\n", encoding: "utf8", timeout: 10000 });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /TOTAL_STAGES must be a non-negative integer/);
+  assert.doesNotMatch(result.stdout, /Accept these destinations/);
+});
+
 test("secret targets matching display names never enter subsequent output", async (t) => {
   for (const name of ["BOLD", "DIM", "RESET", "BLUE", "GREEN", "YELLOW"]) await t.test(name, (t) => {
     const f = fixture(t);

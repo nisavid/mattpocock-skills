@@ -24,7 +24,9 @@ fi
 # Author sets this at the top of the stages section.
 TOTAL_STAGES=0
 
-_STAGE_INDEX=0
+_WIZARD_STAGE_INDEX=0
+_WIZARD_STAGE_COUNT=0
+_WIZARD_STAGE_COUNT_READY=0
 ENV_FILE="${ENV_FILE:-.env}"
 _WIZARD_CONFIGURED=0
 _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
@@ -46,7 +48,7 @@ _clear() {
 banner() {
   _clear
   printf '\n%s%s  %s%s\n' "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$1" "$_WIZARD_FMT_RESET"
-  printf '%s  %s stages%s\n\n' "$_WIZARD_FMT_DIM" "$TOTAL_STAGES" "$_WIZARD_FMT_RESET"
+  printf '%s  %s stages%s\n\n' "$_WIZARD_FMT_DIM" "$_WIZARD_STAGE_COUNT" "$_WIZARD_FMT_RESET"
   printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$_WIZARD_FMT_DIM"
   printf '  captures the values you copy back. Stop any time with Ctrl-C and re-run\n'
   printf '  later, since it remembers values already saved.%s\n' "$_WIZARD_FMT_RESET"
@@ -57,9 +59,9 @@ banner() {
 # Clearing keeps only the current step on screen.
 stage() {
   _clear
-  _STAGE_INDEX=$((_STAGE_INDEX + 1))
+  _WIZARD_STAGE_INDEX=$((_WIZARD_STAGE_INDEX + 1))
   printf '\n%s%s▸ Stage %s/%s · %s%s\n' \
-    "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$_STAGE_INDEX" "$TOTAL_STAGES" "$1" "$_WIZARD_FMT_RESET"
+    "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$_WIZARD_STAGE_INDEX" "$_WIZARD_STAGE_COUNT" "$1" "$_WIZARD_FMT_RESET"
 }
 
 # say "..." prints a plain instruction line.
@@ -362,8 +364,12 @@ _env_destination() {
 # Call before capturing any values. An empty repo selects local-only setup.
 # OWNER/REPO means github.com; HOST/OWNER/REPO supports explicit other hosts.
 configure_destinations() {
-  local _WIZARD_CFG_ROOT="${1:-}" _WIZARD_CFG_REPO="${2:-}" _WIZARD_CFG_FILE _WIZARD_CFG_REPLY="" _WIZARD_CFG_RC
+  local _WIZARD_CFG_ROOT="${1:-}" _WIZARD_CFG_REPO="${2:-}" _WIZARD_CFG_FILE _WIZARD_CFG_REPLY="" _WIZARD_CFG_RC _WIZARD_CFG_STAGE_COUNT
   _revoke_destinations
+  if [[ "$_WIZARD_STAGE_COUNT_READY" == 0 ]]; then
+    [[ "$TOTAL_STAGES" =~ ^[0-9]+$ ]] || { warn "TOTAL_STAGES must be a non-negative integer" >&2; return 1; }
+    _WIZARD_CFG_STAGE_COUNT="$TOTAL_STAGES"
+  fi
   [[ -n "$_WIZARD_CFG_ROOT" ]] || { warn "Specify the project root" >&2; return 1; }
   [[ "$_WIZARD_CFG_ROOT" == /* ]] || _WIZARD_CFG_ROOT="$PWD/$_WIZARD_CFG_ROOT"
   _WIZARD_CFG_ROOT=$(cd -P -- "$_WIZARD_CFG_ROOT" && printf '%s/.' "$PWD") || return 1
@@ -411,6 +417,10 @@ configure_destinations() {
   [[ "$_WIZARD_RUNNER" == /* ]] || { _revoke_destinations; return 2; }
   ENV_FILE="$_WIZARD_CFG_FILE"
   _env_file check || { _WIZARD_CFG_RC=$?; _revoke_destinations; return "$_WIZARD_CFG_RC"; }
+  if [[ "$_WIZARD_STAGE_COUNT_READY" == 0 ]]; then
+    _WIZARD_STAGE_COUNT="$_WIZARD_CFG_STAGE_COUNT"
+    _WIZARD_STAGE_COUNT_READY=1
+  fi
   _WIZARD_CONFIGURED=1
 }
 
