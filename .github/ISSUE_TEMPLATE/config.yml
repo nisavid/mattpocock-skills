@@ -3,6 +3,12 @@ contact_links:
   - name: Report a fork packaging or maintenance issue
     url: https://github.com/nisavid/real-skills/issues
     about: Open a blank issue for problems with this fork, its packaging, or its installation.
+  - name: Report an upstream skill bug
+    url: https://github.com/mattpocock/skills/issues/new?template=bug.yml
+    about: Report a bug in an upstream skill to Matt Pocock’s project.
+  - name: Suggest a change to an upstream skill
+    url: https://github.com/mattpocock/skills/issues/new?template=idea.yml
+    about: Share feedback on an existing upstream skill with Matt Pocock’s project.
   - name: Upstream question or "how do I...?"
     url: https://github.com/mattpocock/skills/discussions/categories/q-a
     about: Ask in Q&A. Issues are for bugs and changes to existing skills only.
