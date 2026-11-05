@@ -17,5 +17,5 @@ jobs:
           persist-credentials: false
       - name: Verify and run the reviewed synthetic fixture
         run: |
-          printf '%s  %s\n' 'f5c213fccf7e5d5220d65fa3717fb4e8a067086aba1ba0d6b666a323d1c519ad' 'tests/research/wizard-distinct-reader.sh' | sha256sum --check --status
+          printf '%s  %s\n' '6490faced17350ee80957d98147f1464f58cb943cd0ce88f8bf1cd08f1ebfcdb' 'tests/research/wizard-distinct-reader.sh' | sha256sum --check --status
           bash tests/research/wizard-distinct-reader.sh

@@ -22,7 +22,7 @@ Look at the current repo to understand its starting state. Read whatever exists;
 
 - `git remote -v` and `.git/config`: is this a GitHub repo? Which one?
 - `AGENTS.md` and `CLAUDE.md` at the repo root: does either exist? Is there already an `## Agent skills` section in either?
-- `GLOSSARY.md` and `GLOSSARY-MAP.md` at the repo root
+- `GLOSSARY.md` and `GLOSSARY-MAP.md` at the repo root, and the legacy `CONTEXT.md` / `CONTEXT-MAP.md`. For a legacy map, inspect its entries and identify the existing, independently established context directories and their mapped `CONTEXT.md` files. Do not treat a map entry alone as permission to change a path. Offer a migration plan covering the root files, mapped glossary files, map references, and `docs/agents/domain.md`.
 - `docs/adr/` and any `src/*/docs/adr/` directories
 - `docs/agents/`: does this skill's prior output already exist?
 - `.scratch/`: a sign that a local-markdown issue tracker convention is already in use
@@ -48,6 +48,10 @@ Default posture: these skills were designed for GitHub. If a `git remote` points
 
 Record the choice in `docs/agents/issue-tracker.md`. The GitHub and GitLab templates carry a "PRs as a request surface" flag, defaulted **off**. Leave it off and don't raise it: a user who wants external PRs in the triage queue can flip the flag in the file later.
 
+A GitHub or GitLab tracker needs a reachable project. Ask the user to confirm the exact host and owner/project (including any GitLab subgroup); do not select a project by remote ordering. If no remote points to that host, ask for its URL, initialize Git if needed, and add it under an unused name (`origin` if free). Never replace an existing remote. Verify the selected project explicitly with `gh repo view <host/owner/repo>` or `glab repo view <project-url>`. If resolution fails, stop and explain what is missing.
+
+Record the confirmed host and project in `docs/agents/issue-tracker.md`, and specialize the chosen template so every tracker operation targets that project explicitly. For GitHub set `GH_REPO` to the confirmed `[HOST/]OWNER/REPO` for each `gh` command, including `gh api` placeholders, and specify `--hostname` for API calls when needed. For GitLab pass `--repo <project-url>` to supported issue, MR, and label commands; for API calls use the confirmed host and project ID or URL-encoded full project path, not `:id` inferred from the checkout. Verify the target on the hosting service before any label or issue mutation; if an operation cannot target it explicitly, stop rather than infer another remote.
+
 **Section B: Triage label vocabulary.** Skip this section entirely if the `triage` skill isn't installed (exploration told you), since an uninstalled skill needs no labels.
 
 If it is installed, ask exactly one question:
@@ -68,6 +72,8 @@ Show the user a draft of:
 - The contents of `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and `docs/agents/triage-labels.md` (the last only when `triage` is installed)
 
 Let them edit before writing.
+
+For legacy glossary migration, show every literal source and destination and the map and consumer-reference changes before asking for confirmation. Include each independently established context whose existing glossary is mapped by the legacy map. Resolve paths within the repository, reject absolute paths, traversal outside the repository, symlinks and ambiguous or duplicate mappings, and stop for missing sources or existing destinations; never overwrite or merge a destination. Do not follow an arbitrary map entry outside the confirmed contexts. After confirmation, use `git mv` for tracked files and a non-overwriting move for untracked files, preserving their contents. Rename approved root `CONTEXT.md` and `CONTEXT-MAP.md` files to `GLOSSARY.md` and `GLOSSARY-MAP.md`, rename mapped `CONTEXT.md` files to `GLOSSARY.md`, update only the matching entries in the root map, and update the confirmed consumer configuration. If validation fails, leave the files untouched and explain the conflict.
 
 ### 4. Write
 
@@ -101,7 +107,7 @@ The block:
 
 Include the `### Triage labels` sub-block, and write `docs/agents/triage-labels.md`, only when `triage` is installed and Section B ran. When it isn't, both are omitted.
 
-When Section B ran on GitHub or GitLab, create each configured label the tracker lacks (`gh label create` / `glab label create`).
+When Section B ran on GitHub or GitLab, create each configured label the confirmed tracker lacks (`gh label create` / `glab label create`), using the explicit target recorded above.
 
 Then write the docs files using the seed templates in this skill folder as a starting point:
 

@@ -19,7 +19,7 @@ jobs:
       issues: write
       actions: write # the action keeps its state in the Actions cache
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629 # v10
         with:
           only-issue-labels: needs-info
           stale-issue-label: needs-info
@@ -34,5 +34,5 @@ jobs:
             Closing this because we asked for more information 14 days ago
             and have not heard back. Thank you for the report. If you can add
             the details, comment here and we will reopen it.
-            See [CONTRIBUTING.md](https://github.com/mattpocock/skills/blob/main/CONTRIBUTING.md)
-            for what a good report includes.
+            See [CONTRIBUTING.md](https://github.com/nisavid/real-skills/blob/main/CONTRIBUTING.md)
+            for contribution guidance.

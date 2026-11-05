@@ -4,7 +4,7 @@ release_channels = []
 [repository]
 host = "github"
 owner = "nisavid"
-name = "mattpocock-skills"
+name = "real-skills"
 default_branch = "main"
 
 [authority]
@@ -21,7 +21,7 @@ upstream_issues = "explicit-only"
 [[fork_remotes]]
 name = "origin"
 push = true
-url = "https://github.com/nisavid/mattpocock-skills"
+url = "https://github.com/nisavid/real-skills"
 
 [[upstreams]]
 id = "mattpocock-skills"

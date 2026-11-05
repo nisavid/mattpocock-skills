@@ -243,6 +243,200 @@ test("defaults use the last assignment and undo write_env's apostrophe quoting",
   });
 });
 
+test("ask and ask_secret assign caller variables even when names match helper locals", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) for (const name of ["key", "prompt", "mode", "current", "input", "s", "e", "p", "rc", "__wizard_ask_result", "__wizard_ask_result2"]) await t.test(`${operation} ${name}`, (t) => {
+    const f = fixture(t);
+    const result = f.run(`${name}=synthetic-before\n${operation} ${name} 'Synthetic prompt:'\n[[ "$${name}" == synthetic-answer ]]`, { input: "synthetic-answer\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-answer/);
+  });
+});
+
+test("ask and ask_secret reject integer targets before reading or evaluating input", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) await t.test(operation, (t) => {
+    const f = fixture(t);
+    const result = f.run(`declare -a a=(0)\ndeclare -i TOKEN=0\nif ${operation} TOKEN 'Synthetic prompt:'; then rc=0; else rc=$?; fi\nread -r remaining\n[[ "$remaining" == 'a[$(touch injected-marker)]' && "$rc" -ne 0 ]]`, { input: "a[$(touch injected-marker)]\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.throws(() => lstatSync(join(f.root, "injected-marker")), { code: "ENOENT" });
+    assert.doesNotMatch(result.stdout + result.stderr, /touch injected-marker/);
+  });
+});
+
+test("ask and ask_secret retain defaults for caller names that match helper locals", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) for (const name of ["key", "input", "__wizard_ask_result", "__wizard_ask_result2"]) await t.test(`${operation} ${name}`, (t) => {
+    const f = fixture(t);
+    f.put(".env", `${name}='synthetic-default'\n`);
+    const result = f.run(`${name}=synthetic-before\n${operation} ${name} 'Synthetic prompt:'\n[[ "$${name}" == synthetic-default ]]`, { input: "\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-default/);
+  });
+});
+
+test("ask and ask_secret leave caller values unchanged on EOF", async (t) => {
+  for (const operation of ["ask", "ask_secret"]) await t.test(operation, (t) => {
+    const f = fixture(t);
+    const result = f.run(`key=synthetic-before\nif ${operation} key 'Synthetic prompt:'; then exit 1; fi\n[[ "$key" == synthetic-before ]]`, { input: "" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /synthetic-before/);
+  });
+});
+
+test("ask retains a safe double-quoted saved default without literal quotes", (t) => {
+  const f = fixture(t);
+  f.put(".env", 'TOKEN="synthetic saved value"\n');
+  const result = f.run(`ask TOKEN 'Synthetic prompt:'\n[[ "$TOKEN" == 'synthetic saved value' ]]\nprintf 'KEPT_DEFAULT\\n'`, { input: "\n" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /KEPT_DEFAULT/);
+});
+
+test("write_env refuses readonly targets before changing the file or success ledger", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\nOTHER=unchanged\n";
+  f.put(".env", original);
+  const result = f.run(`readonly TOKEN=synthetic-original\nif write_env TOKEN synthetic-after; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.doesNotMatch(result.stdout, /✓ wrote/);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+});
+
+test("write_env refuses array targets without changing the file or ledger", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\n";
+  f.put(".env", original);
+  const result = f.run(`declare -a TOKEN=(synthetic-original)\nif write_env TOKEN synthetic-after; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic-after/);
+});
+
+test("write_env refuses namerefs without evaluating their targets", (t) => {
+  const capability = spawnSync("bash", ["-c", "if declare -n probe=target 2>/dev/null; then exit 0; else exit 77; fi"], { encoding: "utf8" });
+  assert.equal(capability.error, undefined, capability.error?.message);
+  if (capability.status === 77) return t.skip("the selected Bash does not support namerefs");
+  assert.equal(capability.status, 0, capability.stderr);
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\n";
+  f.put(".env", original);
+  const result = f.run(`declare -a a=(0)\ndeclare -n TOKEN='a[$(touch injected-marker)]'\nif write_env TOKEN synthetic-value; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.throws(() => lstatSync(join(f.root, "injected-marker")), { code: "ENOENT" });
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic-value/);
+});
+
+test("write_env refuses integer targets without evaluating input", (t) => {
+  const f = fixture(t);
+  const original = "TOKEN='synthetic-before'\n";
+  f.put(".env", original);
+  const result = f.run(`declare -a a=(0)\ndeclare -i TOKEN=0\nif write_env TOKEN 'a[$(touch injected-marker)]'; then rc=0; else rc=$?; fi\nprintf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /RESULT:[1-9][0-9]* WRITTEN:0/);
+  assert.throws(() => lstatSync(join(f.root, "injected-marker")), { code: "ENOENT" });
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
+});
+
+test("captured values cannot replace authored stage progress", async (t) => {
+  for (const name of ["TOTAL_STAGES", "_STAGE_INDEX", "DUMMY"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const secret = "424242";
+    const script = library + `\nTOTAL_STAGES=3\nconfigure_destinations "$PWD" >/dev/null <<< yes\nask_secret ${name} prompt\nwrite_env ${name} "$${name}"\n[[ "$${name}" == ${secret} ]]\nconfigure_destinations "$PWD" >/dev/null <<< yes\nbanner sample </dev/null\nstage sample\nstage second\n[[ "$${name}" == ${secret} ]]\nfinish`;
+    const result = spawnSync("bash", ["-c", script], { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, input: secret + "\n", encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /424242|424243/);
+    assert.match(result.stdout, /3 stages/);
+    assert.match(result.stdout, /Stage 1\/3/);
+    assert.match(result.stdout, /Stage 2\/3/);
+    assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `${name}='${secret}'\n`);
+  });
+});
+
+test("wizard state arrays cannot receive captured values", async (t) => {
+  for (const name of ["WRITTEN_ENV", "WRITTEN_SECRET", "SKIPPED"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const result = f.run(`if ask_secret ${name} prompt; then exit 90; fi\nIFS= read -r remaining\n[[ "$remaining" == sentinel ]]\nif write_env ${name} synthetic-value; then exit 91; fi`, { input: "sentinel\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, /sentinel|synthetic-value/);
+    assert.throws(() => lstatSync(join(f.root, ".env")), { code: "ENOENT" });
+  });
+});
+
+test("an invalid authored stage count stops configuration", (t) => {
+  const f = fixture(t);
+  const result = spawnSync("bash", ["-c", library + '\nTOTAL_STAGES=invalid\nconfigure_destinations "$PWD"'], { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, input: "yes\n", encoding: "utf8", timeout: 10000 });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /TOTAL_STAGES must be a non-negative integer/);
+  assert.doesNotMatch(result.stdout, /Accept these destinations/);
+});
+
+test("secret targets matching display names never enter subsequent output", async (t) => {
+  for (const name of ["BOLD", "DIM", "RESET", "BLUE", "GREEN", "YELLOW"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const secret = "synthetic-private-display-value";
+    const result = f.run(`ask_secret ${name} prompt\n[[ "$${name}" == ${secret} ]]\nwrite_env ${name} "$${name}"\n[[ "$${name}" == ${secret} ]]\nbanner synthetic-banner\nstage synthetic-stage\nstep synthetic-step\nnote synthetic-note\nwarn synthetic-warning\nfinish`, { input: secret + "\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+    assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `${name}='${secret}'\n`);
+  });
+});
+
+test("display-named secret retains its export attribute", (t) => {
+  const f = fixture(t);
+  const secret = "synthetic-private-export-value";
+  const result = f.run(`ask_secret GREEN prompt\nwrite_env GREEN "$GREEN"\nbash -c '[[ "$GREEN" == ${secret} ]]'\nfinish`, { input: secret + "\n", env: { GREEN: "original-export" } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `GREEN='${secret}'\n`);
+});
+
+test("value helpers accept exported names matching helper locals", async (t) => {
+  for (const operation of ["ask", "ask_secret", "write_env"]) for (const declaration of ["export key=42", ...["key", "prompt", "mode", "current", "input", "s", "e", "p", "rc", "value", "destination", "__wizard_ask_result", "__wizard_ask_result2"].map((name) => `declare -ix ${name}=42`)]) await t.test(`${operation}: ${declaration}`, (t) => {
+    const f = fixture(t);
+    const secret = "synthetic-private-value";
+    const call = operation === "write_env" ? `write_env TOKEN ${secret}` : `${operation} TOKEN prompt`;
+    const script = library + `\n${declaration}\nconfigure_destinations "$PWD" >/dev/null <<< yes\n${call}\n[[ "$TOKEN" == ${secret} ]]`;
+    const result = spawnSync("bash", ["-c", script], { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, input: secret + "\n", encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, 0, result.stderr);
+    if (operation !== "ask") assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+    if (operation === "write_env") assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `TOKEN='${secret}'\n`);
+  });
+});
+
+test("write_env updates the caller-visible value after a successful write", (t) => {
+  const f = fixture(t);
+  const result = f.run(`TOKEN=synthetic-old\nwrite_env TOKEN synthetic-new\n[[ "$TOKEN" == synthetic-new ]]\nprintf 'UPDATED\\n'`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /UPDATED/);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), "TOKEN='synthetic-new'\n");
+});
+
+test("write_env preserves whether a target is exported", (t) => {
+  const f = fixture(t);
+  const result = f.run(`export TOKEN=synthetic-before\nwrite_env TOKEN synthetic-updated\nbash -c '[[ "$TOKEN" == synthetic-updated ]]'\nLOCAL_TOKEN=synthetic-before\nexport -n LOCAL_TOKEN\nwrite_env LOCAL_TOKEN synthetic-updated\nbash -c '[[ -z "\${LOCAL_TOKEN+x}" ]]'`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout + result.stderr, /synthetic-updated/);
+});
+
+test("write_env updates caller variables even when their names match helper locals", async (t) => {
+  for (const name of ["key", "value", "destination"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const result = f.run(`${name}=synthetic-old\nwrite_env ${name} synthetic-new\n[[ "$${name}" == synthetic-new ]]`);
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
+test("ask does not offer unsafe double-quoted values as defaults", async (t) => {
+  for (const saved of ['synthetic $TOKEN', 'synthetic \\ escape', 'synthetic " quote']) await t.test(saved, (t) => {
+    const f = fixture(t);
+    f.put(".env", `TOKEN="${saved}"\n`);
+    const result = f.run(`ask TOKEN 'Synthetic prompt:'\n[[ -z "$TOKEN" ]]\nprintf 'NO_DEFAULT\\n'`, { input: "\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /NO_DEFAULT/);
+  });
+});
+
 test("nested paths with spaces and absolute paths inside the confirmed project are accepted", async (t) => {
   for (const absolute of [false, true]) await t.test(absolute ? "absolute" : "relative", (t) => {
     const f = fixture(t);
@@ -547,7 +741,7 @@ function pythonHarness(f, patch) {
   const bin = join(f.base, "bin");
   mkdirSync(bin);
   const path = join(bin, "python3");
-  writeFileSync(path, `#!${python}\nimport json\nimport os\nimport sys\nsource = sys.stdin.read()\nsys.argv = sys.argv[1:]\nif sys.argv[0] == '-I':\n    sys.argv = sys.argv[1:]\n${patch}\nexec(compile(source, '<actual wizard helper>', 'exec'), {'__name__': '__main__'})\n`);
+  writeFileSync(path, `#!${python}\nimport json\nimport os\nimport sys\nif sys.argv[1:3] == ['-I', '-c']:\n    os.execv(${JSON.stringify(python)}, [${JSON.stringify(python)}, *sys.argv[1:]])\nsource = sys.stdin.read()\nsys.argv = sys.argv[1:]\nif sys.argv[0] == '-I':\n    sys.argv = sys.argv[1:]\n${patch}\nexec(compile(source, '<actual wizard helper>', 'exec'), {'__name__': '__main__'})\n`);
   chmodSync(path, 0o755);
   return { PATH: bin + ":" + process.env.PATH };
 }

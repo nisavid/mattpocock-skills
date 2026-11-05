@@ -21,7 +21,7 @@ Don't reach for it to *decide* what to build; for that, [grill-with-docs](https:
 
 ## Prerequisites
 
-None to generate one. Run the generated wizard using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the project directory you confirm before the first stage. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers.
+None to generate one. Run the generated wizard using Bash and Python 3 on Linux, macOS, or WSL. Local values stay under the project directory you confirm before the first stage. Python runs in isolated mode so modules in the project or `PYTHONPATH` cannot replace its filesystem helpers. If a shell variable is already exported, the updated value stays exported for child processes launched by stages. The wizard's own helpers use the commands and exported scalar environment selected during destination setup; exported shell functions are excluded, and exported namerefs are refused. Wizard variables must be assignable plain scalars; readonly, nameref, integer, array, and value-transforming targets are refused. `PATH`, `ENV_FILE`, and names beginning `_WIZARD_` are reserved for the wizard. Shell tracing is disabled because it can expose secrets; do not re-enable it in stages.
 
 The wizard uses `gh` when a stage sets a GitHub secret or variable. If `gh` is missing or not authenticated, the run does not fail. That stage shows a warning, and the closing summary tells you what to set by hand.
 
@@ -29,7 +29,7 @@ Before entering values, you confirm the displayed project root, env file, and Gi
 
 ## Stages
 
-A **stage** is one focused task on one screen. The script clears the terminal between stages, so a stage that overflows the screen loses the part that scrolled away. You author stages in dependency order and set `TOTAL_STAGES`, which drives the progress display.
+A **stage** is one focused task on one screen. The script clears the terminal between stages, so a stage that overflows the screen loses the part that scrolled away. You author stages in dependency order and set `TOTAL_STAGES` to a non-negative integer before configuring destinations. The first successful configuration fixes the progress count for the run, even if you reconfigure destinations.
 
 The [skill](https://www.aihero.dev/ai-coding-dictionary/skill) scopes the procedure before it writes any script. It reads the repo instead of asking cold: `.env*`, `docker-compose*`, framework config, and every `secrets.*` / `vars.*` reference in `.github/workflows/`. Each of those references is a value the wizard has to produce. It then shows you the ordered stage list to confirm. Only after you confirm does it map each stage to the exact path a human follows ("Dashboard → Developers → API keys → Reveal test key → copy"). Where it doesn't know the current UI, it asks you or checks the docs rather than inventing clicks.
 
@@ -83,7 +83,7 @@ No. The agent writes a script; it doesn't run it. You run the script yourself, a
 
 **Can I go back and fix a value I mistyped?**
 
-Not mid-run. There is no back button. The stages run forward, and a wrong answer on stage 3 means Ctrl-C and re-run. Re-running is cheap, because any value already written to `.env` is offered back as a default, so you press Enter through the stages you got right and retype only the wrong one. Users asked for this in launch week, and it is still open: "loved it! One thing though, is there a way to go back and correct what you've entered?"
+Not mid-run. There is no back button. The stages run forward, and a wrong answer on stage 3 means Ctrl-C and re-run. Re-running is cheap, because a saved value in `.env` is offered back as a default, so you press Enter through the stages you got right and retype only the wrong one. Simple double-quoted values are unquoted; double-quoted values containing escapes, dollar signs, or embedded double quotes must be entered again. Users asked for this in launch week, and it is still open: "loved it! One thing though, is there a way to go back and correct what you've entered?"
 
 **What if I run it from another directory?**
 

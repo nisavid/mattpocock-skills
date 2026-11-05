@@ -239,7 +239,7 @@ def build(raw, expected_sha256, revision, base, release):
     source_version = package["version"]
     require(
         isinstance(source_version, str)
-        and re.fullmatch(r"\d+\.\d+\.\d+", source_version)
+        and source_version == release
         and claude["version"] == native["version"] == source_version,
         "source version mismatch",
     )
@@ -320,7 +320,7 @@ def build(raw, expected_sha256, revision, base, release):
     projected_claude["displayName"] = native["interface"]["displayName"]
     for manifest in (portable, projected_claude):
         manifest["version"] = release
-        manifest["repository"] = "https://github.com/nisavid/mattpocock-skills"
+        manifest["repository"] = "https://github.com/nisavid/real-skills"
 
     outputs = {}
     report = {

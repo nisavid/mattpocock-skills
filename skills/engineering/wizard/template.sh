@@ -6,6 +6,8 @@
 # Everything above the "STAGES" marker is the wizard library: do not hand-edit
 # it. Author the per-step stages below the marker.
 
+# Never trace wizard commands: their arguments can contain secrets.
+set +x
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -13,19 +15,23 @@ set -euo pipefail
 # ──────────────────────────────────────────────────────────────────────────
 
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
-  BOLD=$(tput bold); DIM=$(tput dim); RESET=$(tput sgr0)
-  BLUE=$(tput setaf 4); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3); RED=$(tput setaf 1)
+  _WIZARD_FMT_BOLD=$(tput bold); _WIZARD_FMT_DIM=$(tput dim); _WIZARD_FMT_RESET=$(tput sgr0)
+  _WIZARD_FMT_BLUE=$(tput setaf 4); _WIZARD_FMT_GREEN=$(tput setaf 2); _WIZARD_FMT_YELLOW=$(tput setaf 3)
 else
-  BOLD=""; DIM=""; RESET=""; BLUE=""; GREEN=""; YELLOW=""; RED=""
+  _WIZARD_FMT_BOLD=""; _WIZARD_FMT_DIM=""; _WIZARD_FMT_RESET=""; _WIZARD_FMT_BLUE=""; _WIZARD_FMT_GREEN=""; _WIZARD_FMT_YELLOW=""
 fi
 
 # Author sets this at the top of the stages section.
 TOTAL_STAGES=0
 
-_STAGE_INDEX=0
+_WIZARD_STAGE_INDEX=0
+_WIZARD_STAGE_COUNT=0
+_WIZARD_STAGE_COUNT_READY=0
 ENV_FILE="${ENV_FILE:-.env}"
 _WIZARD_CONFIGURED=0
 _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
+_WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
+_WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=(); _WIZARD_EXPORT_ATTRS=()
 WRITTEN_ENV=()    # successful KEY and destination records
 WRITTEN_SECRET=() # successful secret NAME and destination records
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
@@ -34,17 +40,18 @@ SKIPPED=()        # things we couldn't do (e.g. gh missing)
 # output isn't a terminal, so piped logs stay readable.
 _clear() {
   [[ -t 1 ]] || return 0
-  if command -v tput >/dev/null 2>&1; then tput clear; else printf '\033[2J\033[3J\033[H'; fi
+  if command -v tput >/dev/null 2>&1 && tput clear 2>/dev/null; then return 0; fi
+  printf '\033[2J\033[3J\033[H'
 }
 
 # banner "Title" shows the opening frame: what this wizard does.
 banner() {
   _clear
-  printf '\n%s%s  %s%s\n' "$BOLD" "$BLUE" "$1" "$RESET"
-  printf '%s  %s stages%s\n\n' "$DIM" "$TOTAL_STAGES" "$RESET"
-  printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$DIM"
+  printf '\n%s%s  %s%s\n' "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$1" "$_WIZARD_FMT_RESET"
+  printf '%s  %s stages%s\n\n' "$_WIZARD_FMT_DIM" "$_WIZARD_STAGE_COUNT" "$_WIZARD_FMT_RESET"
+  printf '%s  You drive the browser; this wizard tells you exactly what to do and\n' "$_WIZARD_FMT_DIM"
   printf '  captures the values you copy back. Stop any time with Ctrl-C and re-run\n'
-  printf '  later, since it remembers values already saved.%s\n' "$RESET"
+  printf '  later, since it remembers values already saved.%s\n' "$_WIZARD_FMT_RESET"
   pause "Ready to start?"
 }
 
@@ -52,22 +59,22 @@ banner() {
 # Clearing keeps only the current step on screen.
 stage() {
   _clear
-  _STAGE_INDEX=$((_STAGE_INDEX + 1))
+  _WIZARD_STAGE_INDEX=$((_WIZARD_STAGE_INDEX + 1))
   printf '\n%s%s▸ Stage %s/%s · %s%s\n' \
-    "$BOLD" "$BLUE" "$_STAGE_INDEX" "$TOTAL_STAGES" "$1" "$RESET"
+    "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_BLUE" "$_WIZARD_STAGE_INDEX" "$_WIZARD_STAGE_COUNT" "$1" "$_WIZARD_FMT_RESET"
 }
 
 # say "..." prints a plain instruction line.
 say()  { printf '  %s\n' "$1"; }
 # step "..." is a numbered-feeling action the human takes in the browser.
-step() { printf '  %s•%s %s\n' "$BLUE" "$RESET" "$1"; }
-note() { printf '  %s%s%s\n' "$DIM" "$1" "$RESET"; }
-warn() { printf '  %s⚠ %s%s\n' "$YELLOW" "$1" "$RESET"; }
+step() { printf '  %s•%s %s\n' "$_WIZARD_FMT_BLUE" "$_WIZARD_FMT_RESET" "$1"; }
+note() { printf '  %s%s%s\n' "$_WIZARD_FMT_DIM" "$1" "$_WIZARD_FMT_RESET"; }
+warn() { printf '  %s⚠ %s%s\n' "$_WIZARD_FMT_YELLOW" "$1" "$_WIZARD_FMT_RESET"; }
 
 # open_url URL opens it in the human's browser, cross-platform incl. WSL.
 open_url() {
   local url="$1"
-  printf '  %s↗ opening%s %s\n' "$GREEN" "$RESET" "$url"
+  printf '  %s↗ opening%s %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$url"
   { if   command -v wslview     >/dev/null 2>&1; then wslview "$url"
     elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe "$url"
     elif command -v xdg-open    >/dev/null 2>&1; then xdg-open "$url"
@@ -78,25 +85,44 @@ open_url() {
 
 # pause "msg" waits for the human to confirm they've done the manual part.
 pause() {
-  printf '  %s%s%s ' "$DIM" "${1:-Press Enter to continue}" "$RESET"
+  printf '  %s%s%s ' "$_WIZARD_FMT_DIM" "${1:-Press Enter to continue}" "$_WIZARD_FMT_RESET"
   read -r _ || true
 }
 
 # confirm "question" is a y/N gate; returns success on yes.
 confirm() {
   local reply=""
-  printf '  %s? %s [y/N] ' "$YELLOW" "$1"
+  printf '  %s? %s [y/N] ' "$_WIZARD_FMT_YELLOW" "$1"
   read -r reply || true
   [[ "$reply" =~ ^[Yy] ]]
 }
 
 # _env_file MODE [KEY] is the shared boundary for saved values. Missing reads
 # return 1; unsafe destinations and I/O errors return 2. The explicit value
-# payload uses FD 3; Python source uses stdin. Python still inherits the shell's
-# exported environment. All filesystem access starts at the confirmed root.
+# payload uses FD 3; Python source uses stdin. Library helpers use the exported
+# environment captured during destination setup. Filesystem access starts at
+# the confirmed root.
+_wizard_helper() (
+  while IFS= read -r _WIZARD_NAME; do export -n "$_WIZARD_NAME" || return 2; done < <(compgen -e)
+  while IFS= read -r _WIZARD_NAME; do export -nf "$_WIZARD_NAME" || return 2; done < <(compgen -A function)
+  for _WIZARD_INDEX in "${!_WIZARD_EXPORT_NAMES[@]}"; do
+    _WIZARD_NAME=${_WIZARD_EXPORT_NAMES[$_WIZARD_INDEX]}
+    _WIZARD_DECL=$(declare -p "$_WIZARD_NAME" 2>/dev/null) || _WIZARD_DECL=""
+    _WIZARD_DECL=${_WIZARD_DECL#declare -}
+    _WIZARD_ATTR=${_WIZARD_DECL%% *}
+    _WIZARD_ATTR=${_WIZARD_ATTR//-/}
+    [[ "${_WIZARD_ATTR//x/}" == "${_WIZARD_EXPORT_ATTRS[$_WIZARD_INDEX]}" ]] || return 2
+    case "$_WIZARD_ATTR" in
+      *r*) [[ "${!_WIZARD_NAME}" == "${_WIZARD_EXPORT_VALUES[$_WIZARD_INDEX]}" ]] || return 2; export "$_WIZARD_NAME" || return 2 ;;
+      *) export "$_WIZARD_NAME=${_WIZARD_EXPORT_VALUES[$_WIZARD_INDEX]}" || return 2 ;;
+    esac
+  done
+  exec "$_WIZARD_RUNNER" -I -c 'import os, sys; os.fchdir(8); os.execv(sys.argv[1], sys.argv[1:])' "$@"
+)
+
 _env_file() {
   if [[ "$1" != check ]]; then _require_destinations || return "$?"; fi
-  python3 -I - "$_WIZARD_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
+  _wizard_helper "$_WIZARD_PYTHON" -I - "$_WIZARD_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
 import errno
 import os
 import re
@@ -222,6 +248,10 @@ def access_env():
             value = matches[-1]
             if value.startswith(b"'") and value.endswith(b"'"):
                 value = value[1:-1].replace(b"'\\''", b"'")
+            elif value.startswith(b'"') and value.endswith(b'"'):
+                value = value[1:-1]
+                if any(character in value for character in (b"\\", b"$", b'"')):
+                    return 1
             sys.stdout.buffer.write(value)
             return 0
         if operation != "write":
@@ -296,11 +326,13 @@ PY
 }
 
 # Revoke prior authorization before reconfiguration or after destination drift.
-# FD 9 is reserved for descriptor-relative access to the confirmed root.
+# FD 8 holds the helper's launch directory; FD 9 holds the confirmed root.
 _revoke_destinations() {
   _WIZARD_CONFIGURED=0
   _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
-  exec 9<&-
+  _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
+  _WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=(); _WIZARD_EXPORT_ATTRS=()
+  exec 8<&- 9<&-
 }
 
 # Normalize the displayed path without following or hiding symlink components.
@@ -332,50 +364,75 @@ _env_destination() {
 # Call before capturing any values. An empty repo selects local-only setup.
 # OWNER/REPO means github.com; HOST/OWNER/REPO supports explicit other hosts.
 configure_destinations() {
-  local root="${1:-}" repo="${2:-}" file reply="" rc
+  local _WIZARD_CFG_ROOT="${1:-}" _WIZARD_CFG_REPO="${2:-}" _WIZARD_CFG_FILE _WIZARD_CFG_REPLY="" _WIZARD_CFG_RC _WIZARD_CFG_STAGE_COUNT
   _revoke_destinations
-  [[ -n "$root" ]] || { warn "Specify the project root" >&2; return 1; }
-  [[ "$root" == /* ]] || root="$PWD/$root"
-  root=$(cd -P -- "$root" && printf '%s/.' "$PWD") || return 1
-  root="${root%/.}"
-  case "$root" in *$'\n'*|*$'\r'*) return 1 ;; esac
-  file=$(_env_destination "$root" "$ENV_FILE") || return 1
-  if [[ -n "$repo" ]]; then
-    [[ "$repo" == */*/* ]] || repo="github.com/$repo"
-    if [[ ! "$repo" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ || "${repo##*/}" == . || "${repo##*/}" == .. ]]; then
+  if [[ "$_WIZARD_STAGE_COUNT_READY" == 0 ]]; then
+    [[ "$TOTAL_STAGES" =~ ^[0-9]+$ ]] || { warn "TOTAL_STAGES must be a non-negative integer" >&2; return 1; }
+    _WIZARD_CFG_STAGE_COUNT="$TOTAL_STAGES"
+  fi
+  [[ -n "$_WIZARD_CFG_ROOT" ]] || { warn "Specify the project root" >&2; return 1; }
+  [[ "$_WIZARD_CFG_ROOT" == /* ]] || _WIZARD_CFG_ROOT="$PWD/$_WIZARD_CFG_ROOT"
+  _WIZARD_CFG_ROOT=$(cd -P -- "$_WIZARD_CFG_ROOT" && printf '%s/.' "$PWD") || return 1
+  _WIZARD_CFG_ROOT="${_WIZARD_CFG_ROOT%/.}"
+  case "$_WIZARD_CFG_ROOT" in *$'\n'*|*$'\r'*) return 1 ;; esac
+  _WIZARD_CFG_FILE=$(_env_destination "$_WIZARD_CFG_ROOT" "$ENV_FILE") || return 1
+  if [[ -n "$_WIZARD_CFG_REPO" ]]; then
+    [[ "$_WIZARD_CFG_REPO" == */*/* ]] || _WIZARD_CFG_REPO="github.com/$_WIZARD_CFG_REPO"
+    if [[ ! "$_WIZARD_CFG_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ || "${_WIZARD_CFG_REPO##*/}" == . || "${_WIZARD_CFG_REPO##*/}" == .. ]]; then
       warn "Specify GitHub repository as [HOST/]OWNER/REPO" >&2
       return 1
     fi
   fi
-  command -v python3 >/dev/null 2>&1 || {
+  if ! exec 8< .; then _revoke_destinations; return 2; fi
+  _WIZARD_PYTHON=$(type -P python3) || {
     printf 'wizard: Python 3 is required for safe environment-file access\n' >&2
-    return 2
+    _revoke_destinations; return 2
   }
+  _WIZARD_GH=$(type -P gh) || _WIZARD_GH=""
+  while IFS= read -r _WIZARD_NAME; do
+    case "$_WIZARD_NAME" in _WIZARD_*) continue ;; esac
+    _WIZARD_DECL=$(declare -p "$_WIZARD_NAME") || { _revoke_destinations; return 2; }
+    _WIZARD_DECL=${_WIZARD_DECL#declare -}
+    _WIZARD_ATTR=${_WIZARD_DECL%% *}
+    case "$_WIZARD_ATTR" in
+      *a*|*A*) continue ;;
+      *n*) warn "Exported namerefs cannot be used as the helper environment" >&2; _revoke_destinations; return 2 ;;
+    esac
+    _WIZARD_EXPORT_NAMES+=("$_WIZARD_NAME")
+    _WIZARD_EXPORT_VALUES+=("${!_WIZARD_NAME}")
+    _WIZARD_EXPORT_ATTRS+=("${_WIZARD_ATTR//x/}")
+  done < <(compgen -e)
   # Pin the displayed directory before waiting for input, without reading values.
-  _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"
-  if ! exec 9< "$root"; then _revoke_destinations; return 2; fi
-  printf '\n  Project root: %q\n  Env file:     %q\n' "$root" "$file"
-  printf '  GitHub repo:  %s\n' "${repo:-none (local-only)}"
+  _WIZARD_ROOT="$_WIZARD_CFG_ROOT"; _WIZARD_ENV_FILE="$_WIZARD_CFG_FILE"; _WIZARD_REPO="$_WIZARD_CFG_REPO"
+  if ! exec 9< "$_WIZARD_CFG_ROOT"; then _revoke_destinations; return 2; fi
+  printf '\n  Project root: %q\n  Env file:     %q\n' "$_WIZARD_CFG_ROOT" "$_WIZARD_CFG_FILE"
+  printf '  GitHub repo:  %s\n' "${_WIZARD_CFG_REPO:-none (local-only)}"
   printf '  Existing env-file access settings are preserved, including group and ACL access.\n'
   printf '  Anyone who can read the file can see values written to it.\n'
   printf '  Check its permissions and ACLs if you are unsure who can read it.\n'
   printf '  Accept these destinations and the existing readers? [y/N] '
-  read -r reply || { _revoke_destinations; return 1; }
-  case "$reply" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
-  ENV_FILE="$file"
-  _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
+  read -r _WIZARD_CFG_REPLY || { _revoke_destinations; return 1; }
+  case "$_WIZARD_CFG_REPLY" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
+  _WIZARD_RUNNER=$("$_WIZARD_PYTHON" -I -c 'import os, sys; print(os.path.realpath(sys.executable))') || { _revoke_destinations; return 2; }
+  [[ "$_WIZARD_RUNNER" == /* ]] || { _revoke_destinations; return 2; }
+  ENV_FILE="$_WIZARD_CFG_FILE"
+  _env_file check || { _WIZARD_CFG_RC=$?; _revoke_destinations; return "$_WIZARD_CFG_RC"; }
+  if [[ "$_WIZARD_STAGE_COUNT_READY" == 0 ]]; then
+    _WIZARD_STAGE_COUNT="$_WIZARD_CFG_STAGE_COUNT"
+    _WIZARD_STAGE_COUNT_READY=1
+  fi
   _WIZARD_CONFIGURED=1
 }
 
 # Recheck before every operation; a changed destination needs fresh consent.
 _require_destinations() {
-  local rc
+  local _WIZARD_REQUIRE_RC
   if [[ "$_WIZARD_CONFIGURED" != 1 || "$ENV_FILE" != "$_WIZARD_ENV_FILE" ]]; then
     _revoke_destinations
     warn "Call configure_destinations before capturing or persisting values" >&2
     return 2
   fi
-  _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
+  _env_file check || { _WIZARD_REQUIRE_RC=$?; _revoke_destinations; return "$_WIZARD_REQUIRE_RC"; }
 }
 
 # _existing KEY: last saved value, with write_env's quoting undone.
@@ -383,97 +440,139 @@ _existing() {
   _env_file read "$1"
 }
 
+# _ask_value KEY PROMPT MODE RESULT captures input into its caller's result.
+_ask_value() {
+  local _WIZARD_PROMPT_KEY="$1" _WIZARD_PROMPT_TEXT="$2" _WIZARD_PROMPT_MODE="$3" _WIZARD_PROMPT_CURRENT _WIZARD_PROMPT_INPUT _WIZARD_PROMPT_S=$'\001' _WIZARD_PROMPT_E=$'\002' _WIZARD_PROMPT_P _WIZARD_PROMPT_RC=0
+  _WIZARD_PROMPT_CURRENT=$(_existing "$_WIZARD_PROMPT_KEY") || { _WIZARD_PROMPT_RC=$?; (( _WIZARD_PROMPT_RC == 1 )) || return "$_WIZARD_PROMPT_RC"; _WIZARD_PROMPT_RC=0; }
+  if [[ "$_WIZARD_PROMPT_MODE" == secret ]]; then
+    if [[ -n "$_WIZARD_PROMPT_CURRENT" ]]; then
+      printf '  %s%s%s %s[Enter keeps current]%s ' "$_WIZARD_FMT_BOLD" "$_WIZARD_PROMPT_TEXT" "$_WIZARD_FMT_RESET" "$_WIZARD_FMT_DIM" "$_WIZARD_FMT_RESET"
+    else
+      printf '  %s%s%s ' "$_WIZARD_FMT_BOLD" "$_WIZARD_PROMPT_TEXT" "$_WIZARD_FMT_RESET"
+    fi
+    read -rs _WIZARD_PROMPT_INPUT || _WIZARD_PROMPT_RC=1
+    printf '\n'
+  else
+    # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
+    _WIZARD_PROMPT_P="  $_WIZARD_PROMPT_S$_WIZARD_FMT_BOLD$_WIZARD_PROMPT_E$_WIZARD_PROMPT_TEXT$_WIZARD_PROMPT_S$_WIZARD_FMT_RESET$_WIZARD_PROMPT_E "
+    [[ -n "$_WIZARD_PROMPT_CURRENT" ]] && _WIZARD_PROMPT_P+="$_WIZARD_PROMPT_S$_WIZARD_FMT_DIM$_WIZARD_PROMPT_E[Enter keeps current]$_WIZARD_PROMPT_S$_WIZARD_FMT_RESET$_WIZARD_PROMPT_E "
+    read -e -r -p "$_WIZARD_PROMPT_P" _WIZARD_PROMPT_INPUT || _WIZARD_PROMPT_RC=1
+  fi
+  if (( _WIZARD_PROMPT_RC )) && [[ -z "$_WIZARD_PROMPT_INPUT" ]]; then return 1; fi
+  [[ -z "$_WIZARD_PROMPT_INPUT" && -n "$_WIZARD_PROMPT_CURRENT" ]] && _WIZARD_PROMPT_INPUT="$_WIZARD_PROMPT_CURRENT"
+  printf -v "$4" '%s' "$_WIZARD_PROMPT_INPUT"
+}
+
 # ask KEY "Prompt" reads a value into $KEY. Offers the existing .env value as
 # a default on re-runs (Enter keeps it). Visible input (non-secret), edited
-# with Readline. Fails at EOF with no input.
+# with Readline. Fails at EOF with no input. Targets must be assignable scalar
+# identifiers without readonly, nameref, integer, array, or value-transforming
+# attributes. PATH, ENV_FILE, and names beginning _WIZARD_ are reserved for the
+# wizard. Existing export attributes are preserved.
 ask() {
   _require_destinations || return "$?"
-  local key="$1" prompt="$2" current input s=$'\001' e=$'\002' p rc=0
-  current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
-  # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
-  p="  $s$BOLD$e$prompt$s$RESET$e "
-  [[ -n "$current" ]] && p+="$s$DIM$e[Enter keeps current]$s$RESET$e "
-  read -e -r -p "$p" input || rc=1
-  if (( rc )) && [[ -z "$input" ]]; then return 1; fi
-  [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$key" '%s' "$input"
+  if ! _can_assign_literal "${1:-}" 2>/dev/null; then
+    warn "Cannot assign the input to the requested variable" >&2
+    return 2
+  fi
+  local _WIZARD_PUBLIC_RESULT
+  _ask_value "$1" "$2" visible _WIZARD_PUBLIC_RESULT || return "$?"
+  printf -v "$1" '%s' "$_WIZARD_PUBLIC_RESULT"
 }
 
 # ask_secret KEY "Prompt" is like ask, but input is hidden.
 ask_secret() {
   _require_destinations || return "$?"
-  local key="$1" prompt="$2" current input rc=0
-  current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
-  if [[ -n "$current" ]]; then
-    printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
-  else
-    printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+  if ! _can_assign_literal "${1:-}" 2>/dev/null; then
+    warn "Cannot assign the input to the requested variable" >&2
+    return 2
   fi
-  read -rs input || rc=1
-  printf '\n'
-  if (( rc )) && [[ -z "$input" ]]; then return 1; fi
-  [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$key" '%s' "$input"
+  local _WIZARD_PUBLIC_RESULT
+  _ask_value "$1" "$2" secret _WIZARD_PUBLIC_RESULT || return "$?"
+  printf -v "$1" '%s' "$_WIZARD_PUBLIC_RESULT"
 }
 
 # write_env KEY VALUE upserts KEY='VALUE' into ENV_FILE (replaces any existing
-# line). Idempotent. New files use mode 0600. Existing access permissions are
+# line) and sets $KEY. Idempotent. New files use mode 0600. Existing access permissions are
 # retained, but atomic replacement changes the inode and breaks hard links.
 # Symlinked destinations and paths outside the confirmed project are refused.
-write_env() {
+# The target has the same assignable-scalar restrictions as ask; its existing
+# export attribute is preserved.
+_write_env_file() {
   _require_destinations || return "$?"
-  local key="$1" value="$2" destination
-  printf '%s' "$value" | _env_file write "$key" || return "$?"
-  printf -v destination '%s → %q' "$key" "$ENV_FILE"
-  WRITTEN_ENV+=("$destination")
-  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
+  local _WIZARD_WRITE_KEY="$1" _WIZARD_WRITE_VALUE="$2" _WIZARD_WRITE_DESTINATION
+  printf '%s' "$_WIZARD_WRITE_VALUE" | _env_file write "$_WIZARD_WRITE_KEY" || return "$?"
+  printf -v _WIZARD_WRITE_DESTINATION '%s → %q' "$_WIZARD_WRITE_KEY" "$ENV_FILE"
+  WRITTEN_ENV+=("$_WIZARD_WRITE_DESTINATION")
+}
+
+_can_assign_literal() (
+  [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+  # Destination authority belongs to the wizard, never to a prompted value.
+  case "$1" in PATH|ENV_FILE|_WIZARD_*) return 1 ;; esac
+  # Reject namerefs and non-scalar or non-literal variable attributes.
+  if [[ $(declare -p "$1" 2>/dev/null) =~ ^declare[[:space:]]-([a-zA-Z]+)[[:space:]] ]]; then
+    [[ "${BASH_REMATCH[1]}" != *[aAirn]* ]] || return 1
+  fi
+  printf -v "$1" '%s' '__WiZaRd_Assignment_Probe__' || return 1
+  [[ "${!1}" == __WiZaRd_Assignment_Probe__ ]]
+)
+
+write_env() {
+  if ! _can_assign_literal "${1:-}" 2>/dev/null; then
+    warn "Cannot assign the environment value to the requested variable" >&2
+    return 2
+  fi
+  _write_env_file "$@" || return "$?"
+  printf -v "$1" '%s' "$2" || return "$?"
+  printf '  %s✓ wrote%s %s → %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$1" "$ENV_FILE"
 }
 
 # set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
 # to a warning (and records it) if gh is unavailable or unauthenticated.
 set_secret() {
   _require_destinations || return "$?"
-  local name="$1" value="$2"
+  local _WIZARD_SET_NAME="$1" _WIZARD_SET_VALUE="$2"
   if [[ -z "$_WIZARD_REPO" ]]; then
-    SKIPPED+=("GitHub secret $name (no repository confirmed)")
-    warn "skipped GitHub secret $name: no repository confirmed"
+    SKIPPED+=("GitHub secret $_WIZARD_SET_NAME (no repository confirmed)")
+    warn "skipped GitHub secret $_WIZARD_SET_NAME: no repository confirmed"
     return 0
   fi
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if printf '%s' "$value" | gh secret set "$name" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
-      WRITTEN_SECRET+=("$name → $_WIZARD_REPO")
-      printf '  %s✓ set%s GitHub secret %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
+  if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
+    if printf '%s' "$_WIZARD_SET_VALUE" | _wizard_helper "$_WIZARD_GH" secret set "$_WIZARD_SET_NAME" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+      WRITTEN_SECRET+=("$_WIZARD_SET_NAME → $_WIZARD_REPO")
+      printf '  %s✓ set%s GitHub secret %s → %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
       return
     fi
   fi
-  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name --repo $_WIZARD_REPO)")
-  warn "skipped GitHub secret $name: gh not ready; set it later"
+  SKIPPED+=("GitHub secret $_WIZARD_SET_NAME (set it manually: gh secret set $_WIZARD_SET_NAME --repo $_WIZARD_REPO)")
+  warn "skipped GitHub secret $_WIZARD_SET_NAME: gh not ready; set it later"
 }
 
 # set_var NAME VALUE sets a GitHub Actions repo variable (non-secret).
 set_var() {
   _require_destinations || return "$?"
-  local name="$1" value="$2"
+  local _WIZARD_SET_NAME="$1" _WIZARD_SET_VALUE="$2"
   if [[ -z "$_WIZARD_REPO" ]]; then
-    SKIPPED+=("GitHub variable $name (no repository confirmed)")
-    warn "skipped GitHub variable $name: no repository confirmed"
+    SKIPPED+=("GitHub variable $_WIZARD_SET_NAME (no repository confirmed)")
+    warn "skipped GitHub variable $_WIZARD_SET_NAME: no repository confirmed"
     return 0
   fi
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if gh variable set "$name" --body "$value" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
-      printf '  %s✓ set%s GitHub variable %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
+  if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
+    if _wizard_helper "$_WIZARD_GH" variable set "$_WIZARD_SET_NAME" --body "$_WIZARD_SET_VALUE" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+      printf '  %s✓ set%s GitHub variable %s → %s\n' "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
       return
     fi
   fi
-  SKIPPED+=("GitHub variable $name")
-  warn "skipped GitHub variable $name, gh not ready; set it later"
+  SKIPPED+=("GitHub variable $_WIZARD_SET_NAME")
+  warn "skipped GitHub variable $_WIZARD_SET_NAME, gh not ready; set it later"
 }
 
 # finish clears, then shows a closing summary of everything configured.
 finish() {
   local s
   _clear
-  printf '\n%s%s  ✓ Setup complete%s\n' "$BOLD" "$GREEN" "$RESET"
+  printf '\n%s%s  ✓ Setup complete%s\n' "$_WIZARD_FMT_BOLD" "$_WIZARD_FMT_GREEN" "$_WIZARD_FMT_RESET"
   if (( ${#WRITTEN_ENV[@]} )); then
     note "wrote ${#WRITTEN_ENV[@]} value(s):"
     for s in "${WRITTEN_ENV[@]}"; do note "  - $s"; done
@@ -492,7 +591,12 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: author this section. One stage() per step the human takes.
 # Replace the example below. Set TOTAL_STAGES to match the stages you write.
+# Keep every stage inside run_wizard and the last line as is: bash then parses
+# the whole file before the first prompt, so an edit mid-run can't break it.
+# Do not enable shell tracing in stages; it can expose secrets.
 # ──────────────────────────────────────────────────────────────────────────
+
+run_wizard() {
 
 TOTAL_STAGES=1
 
@@ -514,3 +618,6 @@ set_secret STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"   # CI needs this one
 # ──────────────────────────────────────────────────────────────────────────
 
 finish
+}
+
+run_wizard "$@"; exit

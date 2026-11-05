@@ -26,7 +26,8 @@ function fixture(t) {
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const body = args[0] === "secret" && args[1] === "set" ? fs.readFileSync(0, "utf8") : null;
-fs.appendFileSync(process.env.WIZARD_GH_CALLS, JSON.stringify({ args, body }) + "\\n");
+const context = process.env.WIZARD_TRACE_CONTEXT === "1" ? { home: process.env.HOME, ghConfig: process.env.GH_CONFIG_DIR, bashEnv: process.env.BASH_ENV, added: process.env.SYNTHETIC_ADDED, token: process.env.WIZARD_CHECK_TOKEN === "1" ? process.env.GH_TOKEN : undefined, shellFunction: process.env['BASH_FUNC_SYNTHETIC%%'] } : undefined;
+fs.appendFileSync(process.env.WIZARD_GH_CALLS, JSON.stringify({ args, body, context }) + "\\n");
 const fail = process.env.WIZARD_GH_FAIL;
 process.exit((fail === "auth" && args[0] === "auth") || (fail === "write" && args[0] !== "auth") ? 1 : 0);
 `);
@@ -66,6 +67,164 @@ function succeeded(result) {
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr || result.stdout);
 }
+
+test("wizard input cannot replace the confirmed repository", (t) => {
+  const f = fixture(t);
+  const result = f.run('configure_destinations "$2" example/project\nif write_env _WIZARD_REPO github.com/other/repo; then exit 90; fi\nset_secret DUMMY_SECRET dummy-secret\nset_var DUMMY_VAR dummy-value', { input: "yes\n" });
+  succeeded(result);
+  assert.equal(existsSync(join(f.project, ".env")), false);
+  const writes = f.ghCalls().filter(({ args }) => args[1] === "set");
+  assert.equal(writes.length, 2);
+  for (const { args } of writes) assert.equal(args[args.indexOf("--repo") + 1], "github.com/example/project");
+});
+
+test("reserved destination names are refused before input or writes", (t) => {
+  for (const name of ["PATH", "ENV_FILE", "_WIZARD_ROOT", "_WIZARD_ENV_FILE", "_WIZARD_REPO", "_WIZARD_CONFIGURED", "_WIZARD_FUTURE"]) {
+    for (const operation of [`ask ${name} prompt`, `ask_secret ${name} prompt`, `write_env ${name} dummy-value`]) {
+      const f = fixture(t);
+      const result = f.run(`configure_destinations "$2" example/project\nif ${operation}; then exit 90; fi\nIFS= read -r remaining\n[[ "$remaining" == sentinel ]] || exit 91\nset_secret DUMMY_SECRET dummy-secret\nset_var DUMMY_VAR dummy-value`, { input: "yes\nsentinel\n" });
+      succeeded(result);
+      assert.equal(existsSync(join(f.project, ".env")), false, `${operation} wrote an env file`);
+      const calls = f.ghCalls();
+      assert.equal(calls.length, 4, `${operation} made an unexpected GitHub call`);
+      const writes = calls.filter(({ args }) => args[1] === "set");
+      assert.equal(writes.length, 2);
+      for (const { args } of writes) assert.equal(args[args.indexOf("--repo") + 1], "github.com/example/project");
+    }
+  }
+});
+
+test("tracing does not disclose synthetic secrets in generated wizards", (t) => {
+  for (const mode of ["command-line", "inherited"]) {
+    const f = fixture(t);
+    const script = join(f.root, "generated-wizard.sh");
+    const startup = join(f.root, "bash-env.sh");
+    writeFileSync(startup, "set -x\n");
+    writeFileSync(script, library + '\nconfigure_destinations "$PWD" example/project\nask_secret DUMMY_SECRET "Secret:"\nwrite_env DUMMY_SECRET "$DUMMY_SECRET"\nset_secret DUMMY_SECRET "$DUMMY_SECRET"\n');
+    const secret = "synthetic-secret-do-not-log";
+    const args = mode === "command-line" ? ["-x", script] : [script];
+    const result = spawnSync("bash", args, f.options({ input: `yes\n${secret}\n`, env: mode === "inherited" ? { BASH_ENV: startup } : {} }));
+    succeeded(result);
+    assert.equal(result.stdout.includes(secret), false, `${mode} leaked to stdout`);
+    assert.equal(result.stderr.includes(secret), false, `${mode} leaked to stderr`);
+    assert.ok(f.ghCalls().some(({ args, body }) => args[0] === "secret" && args[1] === "set" && body === secret));
+  }
+});
+
+test("helper commands keep their confirmed resolution after a directory change", (t) => {
+  const f = fixture(t);
+  symlinkSync(join(f.root, "bin"), join(f.project, "bin"));
+  symlinkSync("/usr/bin/python3", join(f.root, "bin", "python3"));
+  mkdirSync(join(f.other, "bin"));
+  const marker = join(f.root, "redirected");
+  for (const name of ["python3", "gh"]) {
+    const file = join(f.other, "bin", name);
+    writeFileSync(file, `#!/bin/sh\nprintf redirected > "$WIZARD_REDIRECT_MARKER"\nexit 1\n`);
+    chmodSync(file, 0o755);
+  }
+  const result = f.run('configure_destinations "$2" example/project\ncd "$3"\nset_secret DUMMY_SECRET synthetic-value', { input: "yes\n", env: { PATH: "bin:/usr/bin:/bin", WIZARD_REDIRECT_MARKER: marker } });
+  succeeded(result);
+  assert.equal(existsSync(marker), false);
+  assert.ok(f.ghCalls().some(({ args }) => args[0] === "secret" && args[1] === "set"));
+});
+
+test("replacing the launch directory cannot redirect helper commands", (t) => {
+  const f = fixture(t);
+  symlinkSync(join(f.root, "bin"), join(f.project, "bin"));
+  symlinkSync("/usr/bin/python3", join(f.root, "bin", "python3"));
+  mkdirSync(join(f.other, "bin"));
+  const marker = join(f.root, "redirected");
+  for (const name of ["python3", "gh"]) {
+    const file = join(f.other, "bin", name);
+    writeFileSync(file, '#!/bin/sh\nprintf redirected > "$WIZARD_REDIRECT_MARKER"\nexit 1\n');
+    chmodSync(file, 0o755);
+  }
+  const result = f.run('configure_destinations "$2" example/project\nmv "$2" "$4"\nmv "$3" "$2"\nset_secret DUMMY_SECRET synthetic-value', { args: [join(f.root, "moved")], input: "yes\n", env: { PATH: "bin:/usr/bin:/bin", WIZARD_REDIRECT_MARKER: marker } });
+  succeeded(result);
+  assert.equal(existsSync(marker), false);
+  assert.ok(f.ghCalls().some(({ args }) => args[0] === "secret" && args[1] === "set"));
+});
+
+test("captured exported values cannot change helper credential context", (t) => {
+  const f = fixture(t);
+  const result = f.run('configure_destinations "$2" example/project\nwrite_env HOME changed-home\nwrite_env GH_CONFIG_DIR changed-config\nwrite_env BASH_ENV changed-startup\nexport SYNTHETIC_ADDED=changed\nset_secret DUMMY_SECRET synthetic-value\n[[ "$HOME" == changed-home && "$GH_CONFIG_DIR" == changed-config && "$BASH_ENV" == changed-startup ]]', { input: "yes\n", env: { HOME: "original-home", GH_CONFIG_DIR: "original-config", BASH_ENV: "original-startup", WIZARD_TRACE_CONTEXT: "1" } });
+  succeeded(result);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.deepEqual(call?.context, { home: "original-home", ghConfig: "original-config", bashEnv: "original-startup" });
+});
+
+test("GitHub setters preserve integer and scalar exported names", async (t) => {
+  for (const declaration of ["declare -ix name=42 value=17", "export name=42 value=17", ...["rc", "root", "repo", "file", "reply"].map((name) => `declare -ix ${name}=42`)]) await t.test(declaration, (t) => {
+    const f = fixture(t);
+    const secret = "synthetic-private-value";
+    const result = f.run(`${declaration}\nconfigure_destinations "$2" example/project\nset_secret DUMMY_SECRET ${secret}\nset_var DUMMY_VAR synthetic-var\n[[ \${#WRITTEN_SECRET[@]} == 1 && \${#SKIPPED[@]} == 0 ]]`, { input: "yes\n" });
+    succeeded(result);
+    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+    const calls = f.ghCalls();
+    assert.ok(calls.some(({ args, body }) => args[0] === "secret" && args[1] === "set" && body === secret));
+    assert.ok(calls.some(({ args }) => args[0] === "variable" && args[1] === "set" && args.includes("synthetic-var")));
+  });
+});
+
+test("helper environment preserves readonly exports and literal shell syntax", (t) => {
+  const f = fixture(t);
+  const marker = join(f.root, "unexpected-command");
+  const literal = `$(touch ${marker})\nsynthetic`;
+  const result = f.run('export SHELLOPTS\nreadonly SYNTHETIC_READONLY=original\nexport SYNTHETIC_READONLY\nconfigure_destinations "$2" example/project\nset_secret DUMMY_SECRET synthetic-value', { input: "yes\n", env: { HOME: literal, GH_CONFIG_DIR: "original-config", BASH_ENV: "original-startup", WIZARD_TRACE_CONTEXT: "1" } });
+  succeeded(result);
+  assert.equal(existsSync(marker), false);
+  assert.doesNotMatch(result.stderr, /readonly variable/);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.equal(call?.context?.home, literal);
+});
+
+test("a previously unset exported token stays absent from helper calls", (t) => {
+  const f = fixture(t);
+  const result = f.run('export GH_TOKEN\nconfigure_destinations "$2" example/project\nwrite_env GH_TOKEN synthetic-later-token\nset_secret DUMMY_SECRET synthetic-value\n[[ "$GH_TOKEN" == synthetic-later-token ]]', { input: "yes\n", env: { GH_TOKEN: undefined, WIZARD_TRACE_CONTEXT: "1", WIZARD_CHECK_TOKEN: "1" } });
+  succeeded(result);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.ok(call);
+  assert.equal(call.context.token, undefined);
+});
+
+test("helper calls exclude exported stage functions", (t) => {
+  const f = fixture(t);
+  const result = f.run('configure_destinations "$2" example/project\nSYNTHETIC() { :; }\nexport -f SYNTHETIC\nset_secret DUMMY_SECRET synthetic-value', { input: "yes\n", env: { WIZARD_TRACE_CONTEXT: "1" } });
+  succeeded(result);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.ok(call);
+  assert.equal(call.context.shellFunction, undefined);
+});
+
+test("destination setup refuses an exported nameref", (t) => {
+  const capability = spawnSync("bash", ["-c", "if declare -n probe=target 2>/dev/null; then exit 0; else exit 77; fi"], { encoding: "utf8" });
+  assert.equal(capability.error, undefined, capability.error?.message);
+  if (capability.status === 77) return t.skip("the selected Bash does not support namerefs");
+  assert.equal(capability.status, 0, capability.stderr);
+  const f = fixture(t);
+  const result = f.run('TARGET=original\ndeclare -nx SYNTHETIC_REFERENCE=TARGET\nif configure_destinations "$2" example/project; then exit 90; fi');
+  succeeded(result);
+  assert.equal(existsSync(join(f.project, ".env")), false);
+  assert.deepEqual(f.ghCalls(), []);
+});
+
+test("helper calls refuse changes to captured variable attributes", (t) => {
+  const changes = [
+    "GH_CONFIG_DIR=changed; readonly GH_CONFIG_DIR",
+    "unset GH_CONFIG_DIR; declare -ix GH_CONFIG_DIR=2",
+    "unset GH_CONFIG_DIR; declare -ax GH_CONFIG_DIR=(changed)",
+  ];
+  const capability = spawnSync("bash", ["-c", "if declare -n probe=target 2>/dev/null; then exit 0; else exit 77; fi"], { encoding: "utf8" });
+  assert.equal(capability.error, undefined, capability.error?.message);
+  assert.ok(capability.status === 0 || capability.status === 77, capability.stderr);
+  if (capability.status === 0) changes.push("unset GH_CONFIG_DIR; OTHER=changed; declare -nx GH_CONFIG_DIR=OTHER");
+  for (const change of changes) {
+    const f = fixture(t);
+    const result = f.run(`configure_destinations "$2" example/project\n${change}\nif set_secret DUMMY_SECRET synthetic-value; then exit 90; fi`, { input: "yes\n", env: { GH_CONFIG_DIR: "original-config" } });
+    succeeded(result);
+    assert.deepEqual(f.ghCalls(), [], change);
+  }
+});
 
 test("destination preview is visible before the human confirms", async (t) => {
   const f = fixture(t);
@@ -366,7 +525,7 @@ test("absolute env paths inside the confirmed root retain quoting, defaults, and
   writeFileSync(envFile, "# keep this comment\nOTHER='kept'\nDUMMY='old'\nDUMMY='duplicate'\n");
   chmodSync(envFile, 0o644);
   const value = "dummy 'quoted' \\ value $HOME `literal`";
-  const result = f.run('configure_destinations "$2"\nwrite_env DUMMY "$4"\nwrite_env DUMMY_SECRET "$4"\n[[ "$(_existing DUMMY)" == "$4" ]]\nask DUMMY "Dummy value:"\nask_secret DUMMY_SECRET "Dummy secret:"\n[[ "$DUMMY" == "$4" && "$DUMMY_SECRET" == "$4" ]]\nwrite_env DUMMY "$DUMMY"', { args: [value], input: "yes\n\n\n", env: { ENV_FILE: envFile } });
+  const result = f.run('configure_destinations "$2"\nwrite_env DUMMY "$4"\nwrite_env DUMMY_SECRET "$4"\n[[ "$(_existing DUMMY)" == "$4" ]]\nask DUMMY "Dummy value:"\nask_secret DUMMY_SECRET "Dummy secret:"\n[[ "$DUMMY" == "$4" && "$DUMMY_SECRET" == "$4" ]]\nwrite_env DUMMY "$DUMMY"', { args: [value], input: "yes\n\n\n", env: { ENV_FILE: envFile }, timeout: 15_000 });
   succeeded(result);
   const contents = readFileSync(envFile, "utf8");
   assert.ok(contents.startsWith("# keep this comment\nOTHER='kept'\n"));

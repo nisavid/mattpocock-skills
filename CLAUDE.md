@@ -8,7 +8,7 @@ Skills are organized into bucket folders under `skills/`:
 
 Every skill in `engineering/` or `productivity/` (the **promoted** buckets) must have a reference in the top-level `README.md` and an entry in `.claude-plugin/plugin.json`'s `skills` array (the Claude Code plugin ships exactly the promoted set). Skills in `misc/`, `in-progress/`, and `deprecated/` must not appear in either.
 
-Install commands are copied verbatim from [.agents/install-block.md](./.agents/install-block.md). `.claude-plugin/marketplace.json` makes the repo its own single-plugin marketplace (a fallback the install block explains, not the documented route). For this fork's native manifest generation and package validation, follow [the packaging procedure](./docs/agents/plugin-packaging.md). The upstream distribution decision lives in [.agents/adr/0002-ship-as-a-claude-code-plugin.md](./.agents/adr/0002-ship-as-a-claude-code-plugin.md).
+Install commands are copied verbatim from [.agents/install-block.md](./.agents/install-block.md). `.claude-plugin/marketplace.json` makes the repo its own single-plugin marketplace (a fallback the install block explains, not the documented route). For this fork's native manifest generation and package validation, follow [the packaging procedure](./docs/agents/plugin-packaging.md). The upstream distribution decision lives in [.agents/adr/0002-ship-as-a-claude-code-plugin.md](./.agents/adr/0002-ship-as-a-claude-code-plugin.md). Run `claude plugin validate . --strict` after touching either Claude manifest.
 
 Each skill entry in the top-level `README.md` must link the skill name to its `SKILL.md`.
 
@@ -24,11 +24,13 @@ To (re)link every skill outside `deprecated/` and `misc/` into the local harness
 
 No em-dashes anywhere in this repo's prose (`SKILL.md` files, docs, `README.md`, `CHANGELOG.md`, ADRs, changesets, code comments). Where a sentence reaches for one, rewrite it instead with a comma, colon, period, parentheses, or a conjunction, whichever the sentence actually wants; never do a blind character substitution.
 
+Every skill that dispatches a subagent says to start it with a fresh context window. Some harnesses (Codex, for one) fork the parent conversation by default, and a fork inherits the parent's context, which is what the subagent was meant to escape.
+
 ## Agent skills
 
 ### Issue tracker
 
-Track this fork's packaging and maintenance work in `nisavid/mattpocock-skills` GitHub Issues. Read `docs/agents/issue-tracker.md` before ticket operations.
+Track this fork's packaging and maintenance work in `nisavid/real-skills` GitHub Issues. Read `docs/agents/issue-tracker.md` before ticket operations.
 
 ### Triage labels
 
