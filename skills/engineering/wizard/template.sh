@@ -362,17 +362,17 @@ _env_destination() {
 # Call before capturing any values. An empty repo selects local-only setup.
 # OWNER/REPO means github.com; HOST/OWNER/REPO supports explicit other hosts.
 configure_destinations() {
-  local root="${1:-}" repo="${2:-}" file reply="" rc
+  local _WIZARD_CFG_ROOT="${1:-}" _WIZARD_CFG_REPO="${2:-}" _WIZARD_CFG_FILE _WIZARD_CFG_REPLY="" _WIZARD_CFG_RC
   _revoke_destinations
-  [[ -n "$root" ]] || { warn "Specify the project root" >&2; return 1; }
-  [[ "$root" == /* ]] || root="$PWD/$root"
-  root=$(cd -P -- "$root" && printf '%s/.' "$PWD") || return 1
-  root="${root%/.}"
-  case "$root" in *$'\n'*|*$'\r'*) return 1 ;; esac
-  file=$(_env_destination "$root" "$ENV_FILE") || return 1
-  if [[ -n "$repo" ]]; then
-    [[ "$repo" == */*/* ]] || repo="github.com/$repo"
-    if [[ ! "$repo" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ || "${repo##*/}" == . || "${repo##*/}" == .. ]]; then
+  [[ -n "$_WIZARD_CFG_ROOT" ]] || { warn "Specify the project root" >&2; return 1; }
+  [[ "$_WIZARD_CFG_ROOT" == /* ]] || _WIZARD_CFG_ROOT="$PWD/$_WIZARD_CFG_ROOT"
+  _WIZARD_CFG_ROOT=$(cd -P -- "$_WIZARD_CFG_ROOT" && printf '%s/.' "$PWD") || return 1
+  _WIZARD_CFG_ROOT="${_WIZARD_CFG_ROOT%/.}"
+  case "$_WIZARD_CFG_ROOT" in *$'\n'*|*$'\r'*) return 1 ;; esac
+  _WIZARD_CFG_FILE=$(_env_destination "$_WIZARD_CFG_ROOT" "$ENV_FILE") || return 1
+  if [[ -n "$_WIZARD_CFG_REPO" ]]; then
+    [[ "$_WIZARD_CFG_REPO" == */*/* ]] || _WIZARD_CFG_REPO="github.com/$_WIZARD_CFG_REPO"
+    if [[ ! "$_WIZARD_CFG_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ || "${_WIZARD_CFG_REPO##*/}" == . || "${_WIZARD_CFG_REPO##*/}" == .. ]]; then
       warn "Specify GitHub repository as [HOST/]OWNER/REPO" >&2
       return 1
     fi
@@ -397,32 +397,32 @@ configure_destinations() {
     _WIZARD_EXPORT_ATTRS+=("${_WIZARD_ATTR//x/}")
   done < <(compgen -e)
   # Pin the displayed directory before waiting for input, without reading values.
-  _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"
-  if ! exec 9< "$root"; then _revoke_destinations; return 2; fi
-  printf '\n  Project root: %q\n  Env file:     %q\n' "$root" "$file"
-  printf '  GitHub repo:  %s\n' "${repo:-none (local-only)}"
+  _WIZARD_ROOT="$_WIZARD_CFG_ROOT"; _WIZARD_ENV_FILE="$_WIZARD_CFG_FILE"; _WIZARD_REPO="$_WIZARD_CFG_REPO"
+  if ! exec 9< "$_WIZARD_CFG_ROOT"; then _revoke_destinations; return 2; fi
+  printf '\n  Project root: %q\n  Env file:     %q\n' "$_WIZARD_CFG_ROOT" "$_WIZARD_CFG_FILE"
+  printf '  GitHub repo:  %s\n' "${_WIZARD_CFG_REPO:-none (local-only)}"
   printf '  Existing env-file access settings are preserved, including group and ACL access.\n'
   printf '  Anyone who can read the file can see values written to it.\n'
   printf '  Check its permissions and ACLs if you are unsure who can read it.\n'
   printf '  Accept these destinations and the existing readers? [y/N] '
-  read -r reply || { _revoke_destinations; return 1; }
-  case "$reply" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
+  read -r _WIZARD_CFG_REPLY || { _revoke_destinations; return 1; }
+  case "$_WIZARD_CFG_REPLY" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
   _WIZARD_RUNNER=$("$_WIZARD_PYTHON" -I -c 'import os, sys; print(os.path.realpath(sys.executable))') || { _revoke_destinations; return 2; }
   [[ "$_WIZARD_RUNNER" == /* ]] || { _revoke_destinations; return 2; }
-  ENV_FILE="$file"
-  _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
+  ENV_FILE="$_WIZARD_CFG_FILE"
+  _env_file check || { _WIZARD_CFG_RC=$?; _revoke_destinations; return "$_WIZARD_CFG_RC"; }
   _WIZARD_CONFIGURED=1
 }
 
 # Recheck before every operation; a changed destination needs fresh consent.
 _require_destinations() {
-  local rc
+  local _WIZARD_REQUIRE_RC
   if [[ "$_WIZARD_CONFIGURED" != 1 || "$ENV_FILE" != "$_WIZARD_ENV_FILE" ]]; then
     _revoke_destinations
     warn "Call configure_destinations before capturing or persisting values" >&2
     return 2
   fi
-  _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
+  _env_file check || { _WIZARD_REQUIRE_RC=$?; _revoke_destinations; return "$_WIZARD_REQUIRE_RC"; }
 }
 
 # _existing KEY: last saved value, with write_env's quoting undone.
@@ -534,40 +534,40 @@ write_env() {
 # to a warning (and records it) if gh is unavailable or unauthenticated.
 set_secret() {
   _require_destinations || return "$?"
-  local name="$1" value="$2"
+  local _WIZARD_SET_NAME="$1" _WIZARD_SET_VALUE="$2"
   if [[ -z "$_WIZARD_REPO" ]]; then
-    SKIPPED+=("GitHub secret $name (no repository confirmed)")
-    warn "skipped GitHub secret $name: no repository confirmed"
+    SKIPPED+=("GitHub secret $_WIZARD_SET_NAME (no repository confirmed)")
+    warn "skipped GitHub secret $_WIZARD_SET_NAME: no repository confirmed"
     return 0
   fi
   if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
-    if printf '%s' "$value" | _wizard_helper "$_WIZARD_GH" secret set "$name" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
-      WRITTEN_SECRET+=("$name → $_WIZARD_REPO")
-      printf '  %s✓ set%s GitHub secret %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
+    if printf '%s' "$_WIZARD_SET_VALUE" | _wizard_helper "$_WIZARD_GH" secret set "$_WIZARD_SET_NAME" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+      WRITTEN_SECRET+=("$_WIZARD_SET_NAME → $_WIZARD_REPO")
+      printf '  %s✓ set%s GitHub secret %s → %s\n' "$GREEN" "$RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
       return
     fi
   fi
-  SKIPPED+=("GitHub secret $name (set it manually: gh secret set $name --repo $_WIZARD_REPO)")
-  warn "skipped GitHub secret $name: gh not ready; set it later"
+  SKIPPED+=("GitHub secret $_WIZARD_SET_NAME (set it manually: gh secret set $_WIZARD_SET_NAME --repo $_WIZARD_REPO)")
+  warn "skipped GitHub secret $_WIZARD_SET_NAME: gh not ready; set it later"
 }
 
 # set_var NAME VALUE sets a GitHub Actions repo variable (non-secret).
 set_var() {
   _require_destinations || return "$?"
-  local name="$1" value="$2"
+  local _WIZARD_SET_NAME="$1" _WIZARD_SET_VALUE="$2"
   if [[ -z "$_WIZARD_REPO" ]]; then
-    SKIPPED+=("GitHub variable $name (no repository confirmed)")
-    warn "skipped GitHub variable $name: no repository confirmed"
+    SKIPPED+=("GitHub variable $_WIZARD_SET_NAME (no repository confirmed)")
+    warn "skipped GitHub variable $_WIZARD_SET_NAME: no repository confirmed"
     return 0
   fi
   if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
-    if _wizard_helper "$_WIZARD_GH" variable set "$name" --body "$value" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
-      printf '  %s✓ set%s GitHub variable %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
+    if _wizard_helper "$_WIZARD_GH" variable set "$_WIZARD_SET_NAME" --body "$_WIZARD_SET_VALUE" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+      printf '  %s✓ set%s GitHub variable %s → %s\n' "$GREEN" "$RESET" "$_WIZARD_SET_NAME" "$_WIZARD_REPO"
       return
     fi
   fi
-  SKIPPED+=("GitHub variable $name")
-  warn "skipped GitHub variable $name, gh not ready; set it later"
+  SKIPPED+=("GitHub variable $_WIZARD_SET_NAME")
+  warn "skipped GitHub variable $_WIZARD_SET_NAME, gh not ready; set it later"
 }
 
 # finish clears, then shows a closing summary of everything configured.

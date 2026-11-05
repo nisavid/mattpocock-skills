@@ -153,6 +153,19 @@ test("captured exported values cannot change helper credential context", (t) => 
   assert.deepEqual(call?.context, { home: "original-home", ghConfig: "original-config", bashEnv: "original-startup" });
 });
 
+test("GitHub setters preserve integer and scalar exported names", async (t) => {
+  for (const declaration of ["declare -ix name=42 value=17", "export name=42 value=17", ...["rc", "root", "repo", "file", "reply"].map((name) => `declare -ix ${name}=42`)]) await t.test(declaration, (t) => {
+    const f = fixture(t);
+    const secret = "synthetic-private-value";
+    const result = f.run(`${declaration}\nconfigure_destinations "$2" example/project\nset_secret DUMMY_SECRET ${secret}\nset_var DUMMY_VAR synthetic-var\n[[ \${#WRITTEN_SECRET[@]} == 1 && \${#SKIPPED[@]} == 0 ]]`, { input: "yes\n" });
+    succeeded(result);
+    assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+    const calls = f.ghCalls();
+    assert.ok(calls.some(({ args, body }) => args[0] === "secret" && args[1] === "set" && body === secret));
+    assert.ok(calls.some(({ args }) => args[0] === "variable" && args[1] === "set" && args.includes("synthetic-var")));
+  });
+});
+
 test("helper environment preserves readonly exports and literal shell syntax", (t) => {
   const f = fixture(t);
   const marker = join(f.root, "unexpected-command");
