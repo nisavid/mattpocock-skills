@@ -6,6 +6,8 @@
 # Everything above the "STAGES" marker is the wizard library: do not hand-edit
 # it. Author the per-step stages below the marker.
 
+# Never trace wizard commands: their arguments can contain secrets.
+set +x
 set -euo pipefail
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -415,7 +417,7 @@ _ask_value() {
 # a default on re-runs (Enter keeps it). Visible input (non-secret), edited
 # with Readline. Fails at EOF with no input. Targets must be assignable scalar
 # identifiers without readonly, nameref, integer, array, or value-transforming
-# attributes. ENV_FILE and names beginning _WIZARD_ are reserved for the
+# attributes. PATH, ENV_FILE, and names beginning _WIZARD_ are reserved for the
 # wizard. Existing export attributes are preserved.
 ask() {
   _require_destinations || return "$?"
@@ -469,7 +471,7 @@ _write_env_file() {
 _can_assign_literal() (
   [[ "${1:-}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
   # Destination authority belongs to the wizard, never to a prompted value.
-  case "$1" in ENV_FILE|_WIZARD_*) return 1 ;; esac
+  case "$1" in PATH|ENV_FILE|_WIZARD_*) return 1 ;; esac
   # Reject namerefs and non-scalar or non-literal variable attributes.
   if [[ $(declare -p "$1" 2>/dev/null) =~ ^declare[[:space:]]-([a-zA-Z]+)[[:space:]] ]]; then
     [[ "${BASH_REMATCH[1]}" != *[aAirn]* ]] || return 1
@@ -553,6 +555,7 @@ finish() {
 # Replace the example below. Set TOTAL_STAGES to match the stages you write.
 # Keep every stage inside run_wizard and the last line as is: bash then parses
 # the whole file before the first prompt, so an edit mid-run can't break it.
+# Do not enable shell tracing in stages; it can expose secrets.
 # ──────────────────────────────────────────────────────────────────────────
 
 run_wizard() {

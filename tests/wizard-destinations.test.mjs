@@ -78,7 +78,7 @@ test("wizard input cannot replace the confirmed repository", (t) => {
 });
 
 test("reserved destination names are refused before input or writes", (t) => {
-  for (const name of ["ENV_FILE", "_WIZARD_ROOT", "_WIZARD_ENV_FILE", "_WIZARD_REPO", "_WIZARD_CONFIGURED", "_WIZARD_FUTURE"]) {
+  for (const name of ["PATH", "ENV_FILE", "_WIZARD_ROOT", "_WIZARD_ENV_FILE", "_WIZARD_REPO", "_WIZARD_CONFIGURED", "_WIZARD_FUTURE"]) {
     for (const operation of [`ask ${name} prompt`, `ask_secret ${name} prompt`, `write_env ${name} dummy-value`]) {
       const f = fixture(t);
       const result = f.run(`configure_destinations "$2" example/project\nif ${operation}; then exit 90; fi\nIFS= read -r remaining\n[[ "$remaining" == sentinel ]] || exit 91\nset_secret DUMMY_SECRET dummy-secret\nset_var DUMMY_VAR dummy-value`, { input: "yes\nsentinel\n" });
@@ -90,6 +90,23 @@ test("reserved destination names are refused before input or writes", (t) => {
       assert.equal(writes.length, 2);
       for (const { args } of writes) assert.equal(args[args.indexOf("--repo") + 1], "github.com/example/project");
     }
+  }
+});
+
+test("tracing does not disclose synthetic secrets in generated wizards", (t) => {
+  for (const mode of ["command-line", "inherited"]) {
+    const f = fixture(t);
+    const script = join(f.root, "generated-wizard.sh");
+    const startup = join(f.root, "bash-env.sh");
+    writeFileSync(startup, "set -x\n");
+    writeFileSync(script, library + '\nconfigure_destinations "$PWD" example/project\nask_secret DUMMY_SECRET "Secret:"\nwrite_env DUMMY_SECRET "$DUMMY_SECRET"\nset_secret DUMMY_SECRET "$DUMMY_SECRET"\n');
+    const secret = "synthetic-secret-do-not-log";
+    const args = mode === "command-line" ? ["-x", script] : [script];
+    const result = spawnSync("bash", args, f.options({ input: `yes\n${secret}\n`, env: mode === "inherited" ? { BASH_ENV: startup } : {} }));
+    succeeded(result);
+    assert.equal(result.stdout.includes(secret), false, `${mode} leaked to stdout`);
+    assert.equal(result.stderr.includes(secret), false, `${mode} leaked to stderr`);
+    assert.ok(f.ghCalls().some(({ args, body }) => args[0] === "secret" && args[1] === "set" && body === secret));
   }
 });
 
