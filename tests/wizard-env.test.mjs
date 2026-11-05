@@ -243,6 +243,40 @@ test("defaults use the last assignment and undo write_env's apostrophe quoting",
   });
 });
 
+test("ask retains a safe double-quoted saved default without literal quotes", (t) => {
+  const f = fixture(t);
+  f.put(".env", 'TOKEN="synthetic saved value"\n');
+  const result = f.run(`ask TOKEN 'Synthetic prompt:'\n[[ "$TOKEN" == 'synthetic saved value' ]]\nprintf 'KEPT_DEFAULT\\n'`, { input: "\n" });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /KEPT_DEFAULT/);
+});
+
+test("write_env updates the caller-visible value after a successful write", (t) => {
+  const f = fixture(t);
+  const result = f.run(`TOKEN=synthetic-old\nwrite_env TOKEN synthetic-new\n[[ "$TOKEN" == synthetic-new ]]\nprintf 'UPDATED\\n'`);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /UPDATED/);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), "TOKEN='synthetic-new'\n");
+});
+
+test("write_env updates caller variables even when their names match helper locals", async (t) => {
+  for (const name of ["key", "value", "destination"]) await t.test(name, (t) => {
+    const f = fixture(t);
+    const result = f.run(`${name}=synthetic-old\nwrite_env ${name} synthetic-new\n[[ "$${name}" == synthetic-new ]]`);
+    assert.equal(result.status, 0, result.stderr);
+  });
+});
+
+test("ask does not offer unsafe double-quoted values as defaults", async (t) => {
+  for (const saved of ['synthetic $TOKEN', 'synthetic \\ escape', 'synthetic " quote']) await t.test(saved, (t) => {
+    const f = fixture(t);
+    f.put(".env", `TOKEN="${saved}"\n`);
+    const result = f.run(`ask TOKEN 'Synthetic prompt:'\n[[ -z "$TOKEN" ]]\nprintf 'NO_DEFAULT\\n'`, { input: "\n" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /NO_DEFAULT/);
+  });
+});
+
 test("nested paths with spaces and absolute paths inside the confirmed project are accepted", async (t) => {
   for (const absolute of [false, true]) await t.test(absolute ? "absolute" : "relative", (t) => {
     const f = fixture(t);

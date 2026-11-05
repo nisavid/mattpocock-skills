@@ -83,7 +83,7 @@ No. The agent writes a script; it doesn't run it. You run the script yourself, a
 
 **Can I go back and fix a value I mistyped?**
 
-Not mid-run. There is no back button. The stages run forward, and a wrong answer on stage 3 means Ctrl-C and re-run. Re-running is cheap, because any value already written to `.env` is offered back as a default, so you press Enter through the stages you got right and retype only the wrong one. Users asked for this in launch week, and it is still open: "loved it! One thing though, is there a way to go back and correct what you've entered?"
+Not mid-run. There is no back button. The stages run forward, and a wrong answer on stage 3 means Ctrl-C and re-run. Re-running is cheap, because a saved value in `.env` is offered back as a default, so you press Enter through the stages you got right and retype only the wrong one. Simple double-quoted values are unquoted; double-quoted values containing escapes, dollar signs, or embedded double quotes must be entered again. Users asked for this in launch week, and it is still open: "loved it! One thing though, is there a way to go back and correct what you've entered?"
 
 **What if I run it from another directory?**
 

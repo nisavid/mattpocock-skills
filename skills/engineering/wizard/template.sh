@@ -14,9 +14,9 @@ set -euo pipefail
 
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && [[ "$(tput colors 2>/dev/null || echo 0)" -ge 8 ]]; then
   BOLD=$(tput bold); DIM=$(tput dim); RESET=$(tput sgr0)
-  BLUE=$(tput setaf 4); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3); RED=$(tput setaf 1)
+  BLUE=$(tput setaf 4); GREEN=$(tput setaf 2); YELLOW=$(tput setaf 3)
 else
-  BOLD=""; DIM=""; RESET=""; BLUE=""; GREEN=""; YELLOW=""; RED=""
+  BOLD=""; DIM=""; RESET=""; BLUE=""; GREEN=""; YELLOW=""
 fi
 
 # Author sets this at the top of the stages section.
@@ -34,7 +34,8 @@ SKIPPED=()        # things we couldn't do (e.g. gh missing)
 # output isn't a terminal, so piped logs stay readable.
 _clear() {
   [[ -t 1 ]] || return 0
-  if command -v tput >/dev/null 2>&1; then tput clear; else printf '\033[2J\033[3J\033[H'; fi
+  if command -v tput >/dev/null 2>&1 && tput clear 2>/dev/null; then return 0; fi
+  printf '\033[2J\033[3J\033[H'
 }
 
 # banner "Title" shows the opening frame: what this wizard does.
@@ -222,6 +223,10 @@ def access_env():
             value = matches[-1]
             if value.startswith(b"'") and value.endswith(b"'"):
                 value = value[1:-1].replace(b"'\\''", b"'")
+            elif value.startswith(b'"') and value.endswith(b'"'):
+                value = value[1:-1]
+                if any(character in value for character in (b"\\", b"$", b'"')):
+                    return 1
             sys.stdout.buffer.write(value)
             return 0
         if operation != "write":
@@ -417,16 +422,21 @@ ask_secret() {
 }
 
 # write_env KEY VALUE upserts KEY='VALUE' into ENV_FILE (replaces any existing
-# line). Idempotent. New files use mode 0600. Existing access permissions are
+# line) and sets $KEY. Idempotent. New files use mode 0600. Existing access permissions are
 # retained, but atomic replacement changes the inode and breaks hard links.
 # Symlinked destinations and paths outside the confirmed project are refused.
-write_env() {
+_write_env_file() {
   _require_destinations || return "$?"
   local key="$1" value="$2" destination
   printf '%s' "$value" | _env_file write "$key" || return "$?"
   printf -v destination '%s → %q' "$key" "$ENV_FILE"
   WRITTEN_ENV+=("$destination")
-  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$key" "$ENV_FILE"
+}
+
+write_env() {
+  _write_env_file "$@" || return "$?"
+  printf -v "$1" '%s' "$2" || return "$?"
+  printf '  %s✓ wrote%s %s → %s\n' "$GREEN" "$RESET" "$1" "$ENV_FILE"
 }
 
 # set_secret NAME VALUE sets a GitHub Actions repo secret via gh. Falls back
@@ -492,7 +502,11 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 # STAGES: author this section. One stage() per step the human takes.
 # Replace the example below. Set TOTAL_STAGES to match the stages you write.
+# Keep every stage inside run_wizard and the last line as is: bash then parses
+# the whole file before the first prompt, so an edit mid-run can't break it.
 # ──────────────────────────────────────────────────────────────────────────
+
+run_wizard() {
 
 TOTAL_STAGES=1
 
@@ -514,3 +528,6 @@ set_secret STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"   # CI needs this one
 # ──────────────────────────────────────────────────────────────────────────
 
 finish
+}
+
+run_wizard "$@"; exit
