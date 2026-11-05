@@ -79,7 +79,9 @@ test("destination preview is visible before the human confirms", async (t) => {
     child.stdout.on("data", (data) => {
       stdout += data;
       const preview = stdout.replaceAll("\\ ", " ");
-      if (!confirmed && expected.every((value) => preview.includes(value))) {
+      if (!confirmed && expected.every((value) => preview.includes(value)) &&
+          preview.includes("Existing env-file access settings are preserved") &&
+          preview.includes("Accept these destinations and the existing readers? [y/N]")) {
         confirmed = true;
         child.stdin.end("yes\n");
       }
@@ -89,7 +91,7 @@ test("destination preview is visible before the human confirms", async (t) => {
     child.on("close", (status) => resolve({ status, stdout, stderr, confirmed }));
   });
   succeeded(result);
-  assert.equal(result.confirmed, true, "confirmation must wait until all destinations have been displayed");
+  assert.equal(result.confirmed, true, "confirmation must wait for the destinations, access warning, and reader question");
   assert.match(result.stdout, /configured/);
   assert.equal(existsSync(join(f.project, "config/local.env")), false);
   assert.deepEqual(f.ghCalls(), []);
@@ -106,7 +108,7 @@ test("replacing the project pathname during confirmation cannot redirect the acc
     let replaced = false;
     child.stdout.on("data", (data) => {
       stdout += data;
-      if (!replaced && stdout.includes("Use these destinations? [y/N]")) {
+      if (!replaced && stdout.includes("Accept these destinations and the existing readers? [y/N]")) {
         replaced = true;
         renameSync(f.project, pinned);
         mkdirSync(f.project);
@@ -147,7 +149,7 @@ test("loading the library and declining confirmation never invoke the saved-valu
   const result = f.run('printf "LIBRARY_LOADED\\n"\nif configure_destinations "$2" example/project; then exit 90; fi\nif _existing DUMMY; then exit 91; fi', { input: "n\n" });
   succeeded(result);
   assert.match(result.stdout, /LIBRARY_LOADED/);
-  assert.match(result.stdout, /Use these destinations/);
+  assert.match(result.stdout, /Accept these destinations and the existing readers/);
   assert.doesNotMatch(result.stdout, /saved-dummy-value/);
   assert.equal(existsSync(marker), false);
   assert.deepEqual(f.ghCalls(), []);

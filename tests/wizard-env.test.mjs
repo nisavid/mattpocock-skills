@@ -63,6 +63,25 @@ if write_env TOKEN 'synthetic-new-value'; then rc=0; else rc=$?; fi
 printf 'RESULT:%s WRITTEN:%s\\n' "$rc" "\${#WRITTEN_ENV[@]}"
 `;
 
+test("destination confirmation explains and accepts existing readers before write_env", (t) => {
+  const f = fixture(t);
+  f.put(".env", "TOKEN='old'\n");
+  const script = library + '\nconfigure_destinations "$PWD" || exit 3\nwrite_env TOKEN synthetic-new';
+  const options = { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, encoding: "utf8" };
+  const rejected = spawnSync("bash", ["-c", script], { ...options, input: "no\n" });
+  assert.equal(rejected.status, 3);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), "TOKEN='old'\n");
+  const unanswered = spawnSync("bash", ["-c", script], { ...options, input: "" });
+  assert.equal(unanswered.status, 3);
+  assert.equal(readFileSync(join(f.root, ".env"), "utf8"), "TOKEN='old'\n");
+  const accepted = spawnSync("bash", ["-c", script], { ...options, input: "yes\n" });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.match(accepted.stdout, /existing.*access/i);
+  assert.match(accepted.stdout, /readers/i);
+  assert.doesNotMatch(accepted.stdout, /synthetic-new/);
+  assert.match(readFileSync(join(f.root, ".env"), "utf8"), /synthetic-new/);
+});
+
 function assertRejectedWrite(result, diagnostic = /unsafe ENV_FILE|failed environment access/) {
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stderr);

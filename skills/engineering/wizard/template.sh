@@ -356,7 +356,10 @@ configure_destinations() {
   if ! exec 9< "$root"; then _revoke_destinations; return 2; fi
   printf '\n  Project root: %q\n  Env file:     %q\n' "$root" "$file"
   printf '  GitHub repo:  %s\n' "${repo:-none (local-only)}"
-  printf '  Use these destinations? [y/N] '
+  printf '  Existing env-file access settings are preserved, including group and ACL access.\n'
+  printf '  Anyone who can read the file can see values written to it.\n'
+  printf '  Check its permissions and ACLs if you are unsure who can read it.\n'
+  printf '  Accept these destinations and the existing readers? [y/N] '
   read -r reply || { _revoke_destinations; return 1; }
   case "$reply" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
   ENV_FILE="$file"
