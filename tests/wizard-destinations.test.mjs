@@ -26,7 +26,8 @@ function fixture(t) {
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const body = args[0] === "secret" && args[1] === "set" ? fs.readFileSync(0, "utf8") : null;
-fs.appendFileSync(process.env.WIZARD_GH_CALLS, JSON.stringify({ args, body }) + "\\n");
+const context = process.env.WIZARD_TRACE_CONTEXT === "1" ? { home: process.env.HOME, ghConfig: process.env.GH_CONFIG_DIR, bashEnv: process.env.BASH_ENV, added: process.env.SYNTHETIC_ADDED } : undefined;
+fs.appendFileSync(process.env.WIZARD_GH_CALLS, JSON.stringify({ args, body, context }) + "\\n");
 const fail = process.env.WIZARD_GH_FAIL;
 process.exit((fail === "auth" && args[0] === "auth") || (fail === "write" && args[0] !== "auth") ? 1 : 0);
 `);
@@ -108,6 +109,60 @@ test("tracing does not disclose synthetic secrets in generated wizards", (t) => 
     assert.equal(result.stderr.includes(secret), false, `${mode} leaked to stderr`);
     assert.ok(f.ghCalls().some(({ args, body }) => args[0] === "secret" && args[1] === "set" && body === secret));
   }
+});
+
+test("helper commands keep their confirmed resolution after a directory change", (t) => {
+  const f = fixture(t);
+  symlinkSync(join(f.root, "bin"), join(f.project, "bin"));
+  symlinkSync("/usr/bin/python3", join(f.root, "bin", "python3"));
+  mkdirSync(join(f.other, "bin"));
+  const marker = join(f.root, "redirected");
+  for (const name of ["python3", "gh"]) {
+    const file = join(f.other, "bin", name);
+    writeFileSync(file, `#!/bin/sh\nprintf redirected > "$WIZARD_REDIRECT_MARKER"\nexit 1\n`);
+    chmodSync(file, 0o755);
+  }
+  const result = f.run('configure_destinations "$2" example/project\ncd "$3"\nset_secret DUMMY_SECRET synthetic-value', { input: "yes\n", env: { PATH: "bin:/usr/bin:/bin", WIZARD_REDIRECT_MARKER: marker } });
+  succeeded(result);
+  assert.equal(existsSync(marker), false);
+  assert.ok(f.ghCalls().some(({ args }) => args[0] === "secret" && args[1] === "set"));
+});
+
+test("replacing the launch directory cannot redirect helper commands", (t) => {
+  const f = fixture(t);
+  symlinkSync(join(f.root, "bin"), join(f.project, "bin"));
+  symlinkSync("/usr/bin/python3", join(f.root, "bin", "python3"));
+  mkdirSync(join(f.other, "bin"));
+  const marker = join(f.root, "redirected");
+  for (const name of ["python3", "gh"]) {
+    const file = join(f.other, "bin", name);
+    writeFileSync(file, '#!/bin/sh\nprintf redirected > "$WIZARD_REDIRECT_MARKER"\nexit 1\n');
+    chmodSync(file, 0o755);
+  }
+  const result = f.run('configure_destinations "$2" example/project\nmv "$2" "$4"\nmv "$3" "$2"\nset_secret DUMMY_SECRET synthetic-value', { args: [join(f.root, "moved")], input: "yes\n", env: { PATH: "bin:/usr/bin:/bin", WIZARD_REDIRECT_MARKER: marker } });
+  succeeded(result);
+  assert.equal(existsSync(marker), false);
+  assert.ok(f.ghCalls().some(({ args }) => args[0] === "secret" && args[1] === "set"));
+});
+
+test("captured exported values cannot change helper credential context", (t) => {
+  const f = fixture(t);
+  const result = f.run('configure_destinations "$2" example/project\nwrite_env HOME changed-home\nwrite_env GH_CONFIG_DIR changed-config\nwrite_env BASH_ENV changed-startup\nexport SYNTHETIC_ADDED=changed\nset_secret DUMMY_SECRET synthetic-value\n[[ "$HOME" == changed-home && "$GH_CONFIG_DIR" == changed-config && "$BASH_ENV" == changed-startup ]]', { input: "yes\n", env: { HOME: "original-home", GH_CONFIG_DIR: "original-config", BASH_ENV: "original-startup", WIZARD_TRACE_CONTEXT: "1" } });
+  succeeded(result);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.deepEqual(call?.context, { home: "original-home", ghConfig: "original-config", bashEnv: "original-startup" });
+});
+
+test("helper environment preserves readonly exports and literal shell syntax", (t) => {
+  const f = fixture(t);
+  const marker = join(f.root, "unexpected-command");
+  const literal = `$(touch ${marker})\nsynthetic`;
+  const result = f.run('export SHELLOPTS\nreadonly SYNTHETIC_READONLY=original\nexport SYNTHETIC_READONLY\nconfigure_destinations "$2" example/project\nset_secret DUMMY_SECRET synthetic-value', { input: "yes\n", env: { HOME: literal, GH_CONFIG_DIR: "original-config", BASH_ENV: "original-startup", WIZARD_TRACE_CONTEXT: "1" } });
+  succeeded(result);
+  assert.equal(existsSync(marker), false);
+  assert.doesNotMatch(result.stderr, /readonly variable/);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.equal(call?.context?.home, literal);
 });
 
 test("destination preview is visible before the human confirms", async (t) => {

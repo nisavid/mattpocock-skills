@@ -28,6 +28,8 @@ _STAGE_INDEX=0
 ENV_FILE="${ENV_FILE:-.env}"
 _WIZARD_CONFIGURED=0
 _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
+_WIZARD_HELPER_DIR=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
+_WIZARD_EXPORTS=()
 WRITTEN_ENV=()    # successful KEY and destination records
 WRITTEN_SECRET=() # successful secret NAME and destination records
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
@@ -95,11 +97,28 @@ confirm() {
 
 # _env_file MODE [KEY] is the shared boundary for saved values. Missing reads
 # return 1; unsafe destinations and I/O errors return 2. The explicit value
-# payload uses FD 3; Python source uses stdin. Python still inherits the shell's
-# exported environment. All filesystem access starts at the confirmed root.
+# payload uses FD 3; Python source uses stdin. Library helpers use the exported
+# environment captured during destination setup. Filesystem access starts at
+# the confirmed root.
+_wizard_helper() (
+  cd -- "$_WIZARD_HELPER_DIR" || return 2
+  while IFS= read -r _WIZARD_NAME; do export -n "$_WIZARD_NAME" || return 2; done < <(compgen -e)
+  for _WIZARD_LINE in "${_WIZARD_EXPORTS[@]}"; do
+    _WIZARD_DECL=${_WIZARD_LINE#declare -}
+    _WIZARD_ATTR=${_WIZARD_DECL%% *}
+    _WIZARD_DECL=${_WIZARD_DECL#* }
+    case "$_WIZARD_ATTR" in
+      *a*|*A*) continue ;; # Bash arrays are not inherited as environment variables.
+      *r*) export "${_WIZARD_DECL%%=*}" || return 2 ;;
+      *) eval "export $_WIZARD_DECL" || return 2 ;;
+    esac
+  done
+  exec "$@"
+)
+
 _env_file() {
   if [[ "$1" != check ]]; then _require_destinations || return "$?"; fi
-  python3 -I - "$_WIZARD_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
+  _wizard_helper "$_WIZARD_PYTHON" -I - "$_WIZARD_ROOT" "$ENV_FILE" "$1" "${2-}" 3<&0 <<'PY'
 import errno
 import os
 import re
@@ -303,11 +322,12 @@ PY
 }
 
 # Revoke prior authorization before reconfiguration or after destination drift.
-# FD 9 is reserved for descriptor-relative access to the confirmed root.
+# FD 8 holds the helper's launch directory; FD 9 holds the confirmed root.
 _revoke_destinations() {
   _WIZARD_CONFIGURED=0
   _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
-  exec 9<&-
+  _WIZARD_HELPER_DIR=""; _WIZARD_PYTHON=""; _WIZARD_GH=""; _WIZARD_EXPORTS=()
+  exec 8<&- 9<&-
 }
 
 # Normalize the displayed path without following or hiding symlink components.
@@ -354,10 +374,16 @@ configure_destinations() {
       return 1
     fi
   fi
-  command -v python3 >/dev/null 2>&1 || {
+  if ! exec 8< .; then _revoke_destinations; return 2; fi
+  _WIZARD_HELPER_DIR=/dev/fd/8
+  _WIZARD_PYTHON=$(type -P python3) || {
     printf 'wizard: Python 3 is required for safe environment-file access\n' >&2
-    return 2
+    _revoke_destinations; return 2
   }
+  [[ "$_WIZARD_PYTHON" == /* ]] || _WIZARD_PYTHON="$_WIZARD_HELPER_DIR/$_WIZARD_PYTHON"
+  _WIZARD_GH=$(type -P gh) || _WIZARD_GH=""
+  [[ -z "$_WIZARD_GH" || "$_WIZARD_GH" == /* ]] || _WIZARD_GH="$_WIZARD_HELPER_DIR/$_WIZARD_GH"
+  while IFS= read -r _WIZARD_LINE; do _WIZARD_EXPORTS+=("$_WIZARD_LINE"); done < <(export -p)
   # Pin the displayed directory before waiting for input, without reading values.
   _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"
   if ! exec 9< "$root"; then _revoke_destinations; return 2; fi
@@ -500,8 +526,8 @@ set_secret() {
     warn "skipped GitHub secret $name: no repository confirmed"
     return 0
   fi
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if printf '%s' "$value" | gh secret set "$name" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+  if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
+    if printf '%s' "$value" | _wizard_helper "$_WIZARD_GH" secret set "$name" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
       WRITTEN_SECRET+=("$name → $_WIZARD_REPO")
       printf '  %s✓ set%s GitHub secret %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
       return
@@ -520,8 +546,8 @@ set_var() {
     warn "skipped GitHub variable $name: no repository confirmed"
     return 0
   fi
-  if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    if gh variable set "$name" --body "$value" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
+  if [[ -n "$_WIZARD_GH" ]] && _wizard_helper "$_WIZARD_GH" auth status >/dev/null 2>&1; then
+    if _wizard_helper "$_WIZARD_GH" variable set "$name" --body "$value" --repo "$_WIZARD_REPO" >/dev/null 2>&1; then
       printf '  %s✓ set%s GitHub variable %s → %s\n' "$GREEN" "$RESET" "$name" "$_WIZARD_REPO"
       return
     fi
