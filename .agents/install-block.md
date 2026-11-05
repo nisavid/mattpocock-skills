@@ -77,6 +77,8 @@ Gemini doesn't read `.claude-plugin`, and `--path` takes one bucket. One install
 
 <canonical-block name="gemini">
 
+Back up any matching skill directories with local edits before installing or updating; Gemini CLI may replace them.
+
 ```bash
 gemini skills install https://github.com/mattpocock/skills.git --path skills/engineering
 gemini skills install https://github.com/mattpocock/skills.git --path skills/productivity
@@ -88,13 +90,15 @@ Re-run both commands to update.
 
 ## Every other agent, or editable files (skills.sh)
 
-`-a` preselects the agent. Each agent in the comment was run on 2026-10-07. Prefer skills.sh to an agent's own repo installer, such as `amp skill add` or `pi install git:…`, because those also pull in `misc/` and `in-progress/`. `npx skills update` skips skills added upstream since `add`, so the block tells users to re-run `add`.
+`-a` preselects the agent. Prefer skills.sh to an agent's own repo installer, such as `amp skill add` or `pi install git:…`, because those also pull in `misc/` and `in-progress/`. `npx skills update` skips skills added upstream since `add`, so the block tells users to re-run `add`.
 
 <canonical-block name="other-agents">
 
 ```bash
-npx skills@latest add mattpocock/skills -a <agent>  # cursor, opencode, devin, windsurf, amp, pi; omit -a to choose
+npx skills@latest add mattpocock/skills
 ```
+
+To select an agent explicitly, add `-a` followed by its name, for example `-a cursor`.
 
 When the installer asks which skills to take, include `setup-matt-pocock-skills`. To update, run `npx skills@latest update`, and re-run `add` to pick up new skills.
 
