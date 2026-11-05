@@ -30,7 +30,7 @@ BETA_DATA = b"\x00\xffliteral support bytes\r\n"
 LICENSE = b"MIT fixture license\nCopyright (c) 2026 Fixture Author\n"
 
 
-def source_archive(source_version="1.3.1", native_version=None):
+def source_archive(source_version="1.3.2+from.1.3.1", native_version=None):
     roots = ["./skills/engineering/alpha", "./skills/productivity/beta"]
     manifest = {
         "name": "mattpocock-skills",
@@ -83,7 +83,7 @@ def source_archive(source_version="1.3.1", native_version=None):
 def test_build_separates_source_version_from_upstream_base():
     from release_builder import build
 
-    source = source_archive(source_version="1.3.2")
+    source = source_archive(source_version="1.3.3+from.1.3.1")
     archives, _report = build(
         source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.3+from.1.3.1"
     )
@@ -95,7 +95,7 @@ def test_build_separates_source_version_from_upstream_base():
             assert json.loads(archive.read(manifest_path))["version"] == "1.3.3+from.1.3.1"
             provenance = json.loads(archive.read("RELEASE.json"))
             assert provenance["base_version"] == "1.3.1"
-            assert provenance["source_version"] == "1.3.2"
+            assert provenance["source_version"] == "1.3.3+from.1.3.1"
 
 
 def test_build_release_versions_in_both_manifests():
@@ -164,3 +164,23 @@ def test_build_preserves_selected_files_in_both_release_layouts():
                 assert manifest["skills"] == [
                     "./skills/engineering/alpha", "./skills/productivity/beta"
                 ]
+
+
+def test_build_keeps_release_identity_across_source_and_archives():
+    from release_builder import build
+
+    version = "1.3.4+from.1.3.2"
+    source = source_archive(source_version=version)
+    archives, report = build(
+        source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.2", version
+    )
+    assert report["source_version"] == version
+    for fmt, manifest_path in (
+        ("agent-plugins", "plugin.json"),
+        ("claude", ".claude-plugin/plugin.json"),
+    ):
+        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-{version}-{fmt}.zip"])) as archive:
+            manifest = json.loads(archive.read(manifest_path))
+            assert manifest["version"] == version
+            assert manifest["repository"] == "https://github.com/nisavid/real-skills"
+            assert json.loads(archive.read("RELEASE.json"))["source_version"] == version

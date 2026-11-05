@@ -12,7 +12,7 @@ from test_release_builder import REVISION, source_archive
 def test_build_refuses_inconsistent_source_versions():
     from release_builder import build
 
-    source = source_archive(source_version="1.3.2", native_version="1.3.3")
+    source = source_archive(source_version="1.3.3+from.1.3.1", native_version="1.3.4+from.1.3.1")
     with pytest.raises(ValueError, match="source version mismatch"):
         build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.3+from.1.3.1")
 
@@ -62,3 +62,12 @@ def test_build_refuses_release_versions_outside_policy(base, release):
     source = source_archive()
     with pytest.raises(ValueError):
         build(source, hashlib.sha256(source).hexdigest(), REVISION, base, release)
+
+
+@pytest.mark.parametrize("source_version", ["1.3.2", "1.3.5+from.1.3.2"])
+def test_build_refuses_source_release_version_mismatch(source_version):
+    from release_builder import build
+
+    source = source_archive(source_version=source_version)
+    with pytest.raises(ValueError, match="source version mismatch"):
+        build(source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.2", "1.3.4+from.1.3.2")
