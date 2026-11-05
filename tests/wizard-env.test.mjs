@@ -671,7 +671,7 @@ function pythonHarness(f, patch) {
   const bin = join(f.base, "bin");
   mkdirSync(bin);
   const path = join(bin, "python3");
-  writeFileSync(path, `#!${python}\nimport json\nimport os\nimport sys\nsource = sys.stdin.read()\nsys.argv = sys.argv[1:]\nif sys.argv[0] == '-I':\n    sys.argv = sys.argv[1:]\n${patch}\nexec(compile(source, '<actual wizard helper>', 'exec'), {'__name__': '__main__'})\n`);
+  writeFileSync(path, `#!${python}\nimport json\nimport os\nimport sys\nif sys.argv[1:3] == ['-I', '-c']:\n    os.execv(${JSON.stringify(python)}, [${JSON.stringify(python)}, *sys.argv[1:]])\nsource = sys.stdin.read()\nsys.argv = sys.argv[1:]\nif sys.argv[0] == '-I':\n    sys.argv = sys.argv[1:]\n${patch}\nexec(compile(source, '<actual wizard helper>', 'exec'), {'__name__': '__main__'})\n`);
   chmodSync(path, 0o755);
   return { PATH: bin + ":" + process.env.PATH };
 }

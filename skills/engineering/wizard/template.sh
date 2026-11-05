@@ -28,7 +28,7 @@ _STAGE_INDEX=0
 ENV_FILE="${ENV_FILE:-.env}"
 _WIZARD_CONFIGURED=0
 _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
-_WIZARD_HELPER_DIR=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
+_WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
 _WIZARD_EXPORTS=()
 WRITTEN_ENV=()    # successful KEY and destination records
 WRITTEN_SECRET=() # successful secret NAME and destination records
@@ -101,7 +101,6 @@ confirm() {
 # environment captured during destination setup. Filesystem access starts at
 # the confirmed root.
 _wizard_helper() (
-  cd -- "$_WIZARD_HELPER_DIR" || return 2
   while IFS= read -r _WIZARD_NAME; do export -n "$_WIZARD_NAME" || return 2; done < <(compgen -e)
   for _WIZARD_LINE in "${_WIZARD_EXPORTS[@]}"; do
     _WIZARD_DECL=${_WIZARD_LINE#declare -}
@@ -119,7 +118,7 @@ _wizard_helper() (
         fi ;;
     esac
   done
-  exec "$@"
+  exec "$_WIZARD_RUNNER" -I -c 'import os, sys; os.fchdir(8); os.execv(sys.argv[1], sys.argv[1:])' "$@"
 )
 
 _env_file() {
@@ -332,7 +331,7 @@ PY
 _revoke_destinations() {
   _WIZARD_CONFIGURED=0
   _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
-  _WIZARD_HELPER_DIR=""; _WIZARD_PYTHON=""; _WIZARD_GH=""; _WIZARD_EXPORTS=()
+  _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""; _WIZARD_EXPORTS=()
   exec 8<&- 9<&-
 }
 
@@ -381,14 +380,11 @@ configure_destinations() {
     fi
   fi
   if ! exec 8< .; then _revoke_destinations; return 2; fi
-  _WIZARD_HELPER_DIR=/dev/fd/8
   _WIZARD_PYTHON=$(type -P python3) || {
     printf 'wizard: Python 3 is required for safe environment-file access\n' >&2
     _revoke_destinations; return 2
   }
-  [[ "$_WIZARD_PYTHON" == /* ]] || _WIZARD_PYTHON="$_WIZARD_HELPER_DIR/$_WIZARD_PYTHON"
   _WIZARD_GH=$(type -P gh) || _WIZARD_GH=""
-  [[ -z "$_WIZARD_GH" || "$_WIZARD_GH" == /* ]] || _WIZARD_GH="$_WIZARD_HELPER_DIR/$_WIZARD_GH"
   while IFS= read -r _WIZARD_LINE; do _WIZARD_EXPORTS+=("$_WIZARD_LINE"); done < <(export -p)
   # Pin the displayed directory before waiting for input, without reading values.
   _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"
@@ -401,6 +397,8 @@ configure_destinations() {
   printf '  Accept these destinations and the existing readers? [y/N] '
   read -r reply || { _revoke_destinations; return 1; }
   case "$reply" in y|Y|yes|YES|Yes) ;; *) _revoke_destinations; return 1 ;; esac
+  _WIZARD_RUNNER=$("$_WIZARD_PYTHON" -I -c 'import os, sys; print(os.path.realpath(sys.executable))') || { _revoke_destinations; return 2; }
+  [[ "$_WIZARD_RUNNER" == /* ]] || { _revoke_destinations; return 2; }
   ENV_FILE="$file"
   _env_file check || { rc=$?; _revoke_destinations; return "$rc"; }
   _WIZARD_CONFIGURED=1
