@@ -432,25 +432,25 @@ _existing() {
 
 # _ask_value KEY PROMPT MODE RESULT captures input into its caller's result.
 _ask_value() {
-  local key="$1" prompt="$2" mode="$3" current input s=$'\001' e=$'\002' p rc=0
-  current=$(_existing "$key") || { rc=$?; (( rc == 1 )) || return "$rc"; rc=0; }
-  if [[ "$mode" == secret ]]; then
-    if [[ -n "$current" ]]; then
-      printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$prompt" "$RESET" "$DIM" "$RESET"
+  local _WIZARD_PROMPT_KEY="$1" _WIZARD_PROMPT_TEXT="$2" _WIZARD_PROMPT_MODE="$3" _WIZARD_PROMPT_CURRENT _WIZARD_PROMPT_INPUT _WIZARD_PROMPT_S=$'\001' _WIZARD_PROMPT_E=$'\002' _WIZARD_PROMPT_P _WIZARD_PROMPT_RC=0
+  _WIZARD_PROMPT_CURRENT=$(_existing "$_WIZARD_PROMPT_KEY") || { _WIZARD_PROMPT_RC=$?; (( _WIZARD_PROMPT_RC == 1 )) || return "$_WIZARD_PROMPT_RC"; _WIZARD_PROMPT_RC=0; }
+  if [[ "$_WIZARD_PROMPT_MODE" == secret ]]; then
+    if [[ -n "$_WIZARD_PROMPT_CURRENT" ]]; then
+      printf '  %s%s%s %s[Enter keeps current]%s ' "$BOLD" "$_WIZARD_PROMPT_TEXT" "$RESET" "$DIM" "$RESET"
     else
-      printf '  %s%s%s ' "$BOLD" "$prompt" "$RESET"
+      printf '  %s%s%s ' "$BOLD" "$_WIZARD_PROMPT_TEXT" "$RESET"
     fi
-    read -rs input || rc=1
+    read -rs _WIZARD_PROMPT_INPUT || _WIZARD_PROMPT_RC=1
     printf '\n'
   else
     # Readline needs the colour codes wrapped in \001..\002 to place the cursor.
-    p="  $s$BOLD$e$prompt$s$RESET$e "
-    [[ -n "$current" ]] && p+="$s$DIM$e[Enter keeps current]$s$RESET$e "
-    read -e -r -p "$p" input || rc=1
+    _WIZARD_PROMPT_P="  $_WIZARD_PROMPT_S$BOLD$_WIZARD_PROMPT_E$_WIZARD_PROMPT_TEXT$_WIZARD_PROMPT_S$RESET$_WIZARD_PROMPT_E "
+    [[ -n "$_WIZARD_PROMPT_CURRENT" ]] && _WIZARD_PROMPT_P+="$_WIZARD_PROMPT_S$DIM$_WIZARD_PROMPT_E[Enter keeps current]$_WIZARD_PROMPT_S$RESET$_WIZARD_PROMPT_E "
+    read -e -r -p "$_WIZARD_PROMPT_P" _WIZARD_PROMPT_INPUT || _WIZARD_PROMPT_RC=1
   fi
-  if (( rc )) && [[ -z "$input" ]]; then return 1; fi
-  [[ -z "$input" && -n "$current" ]] && input="$current"
-  printf -v "$4" '%s' "$input"
+  if (( _WIZARD_PROMPT_RC )) && [[ -z "$_WIZARD_PROMPT_INPUT" ]]; then return 1; fi
+  [[ -z "$_WIZARD_PROMPT_INPUT" && -n "$_WIZARD_PROMPT_CURRENT" ]] && _WIZARD_PROMPT_INPUT="$_WIZARD_PROMPT_CURRENT"
+  printf -v "$4" '%s' "$_WIZARD_PROMPT_INPUT"
 }
 
 # ask KEY "Prompt" reads a value into $KEY. Offers the existing .env value as
@@ -465,15 +465,9 @@ ask() {
     warn "Cannot assign the input to the requested variable" >&2
     return 2
   fi
-  if [[ "$1" == __wizard_ask_result ]]; then
-    local __wizard_ask_result2
-    _ask_value "$1" "$2" visible __wizard_ask_result2 || return "$?"
-    printf -v "$1" '%s' "$__wizard_ask_result2"
-  else
-    local __wizard_ask_result
-    _ask_value "$1" "$2" visible __wizard_ask_result || return "$?"
-    printf -v "$1" '%s' "$__wizard_ask_result"
-  fi
+  local _WIZARD_PUBLIC_RESULT
+  _ask_value "$1" "$2" visible _WIZARD_PUBLIC_RESULT || return "$?"
+  printf -v "$1" '%s' "$_WIZARD_PUBLIC_RESULT"
 }
 
 # ask_secret KEY "Prompt" is like ask, but input is hidden.
@@ -483,15 +477,9 @@ ask_secret() {
     warn "Cannot assign the input to the requested variable" >&2
     return 2
   fi
-  if [[ "$1" == __wizard_ask_result ]]; then
-    local __wizard_ask_result2
-    _ask_value "$1" "$2" secret __wizard_ask_result2 || return "$?"
-    printf -v "$1" '%s' "$__wizard_ask_result2"
-  else
-    local __wizard_ask_result
-    _ask_value "$1" "$2" secret __wizard_ask_result || return "$?"
-    printf -v "$1" '%s' "$__wizard_ask_result"
-  fi
+  local _WIZARD_PUBLIC_RESULT
+  _ask_value "$1" "$2" secret _WIZARD_PUBLIC_RESULT || return "$?"
+  printf -v "$1" '%s' "$_WIZARD_PUBLIC_RESULT"
 }
 
 # write_env KEY VALUE upserts KEY='VALUE' into ENV_FILE (replaces any existing
@@ -502,10 +490,10 @@ ask_secret() {
 # export attribute is preserved.
 _write_env_file() {
   _require_destinations || return "$?"
-  local key="$1" value="$2" destination
-  printf '%s' "$value" | _env_file write "$key" || return "$?"
-  printf -v destination '%s → %q' "$key" "$ENV_FILE"
-  WRITTEN_ENV+=("$destination")
+  local _WIZARD_WRITE_KEY="$1" _WIZARD_WRITE_VALUE="$2" _WIZARD_WRITE_DESTINATION
+  printf '%s' "$_WIZARD_WRITE_VALUE" | _env_file write "$_WIZARD_WRITE_KEY" || return "$?"
+  printf -v _WIZARD_WRITE_DESTINATION '%s → %q' "$_WIZARD_WRITE_KEY" "$ENV_FILE"
+  WRITTEN_ENV+=("$_WIZARD_WRITE_DESTINATION")
 }
 
 _can_assign_literal() (

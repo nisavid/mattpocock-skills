@@ -338,6 +338,19 @@ test("write_env refuses integer targets without evaluating input", (t) => {
   assert.equal(readFileSync(join(f.root, ".env"), "utf8"), original);
 });
 
+test("value helpers accept exported names matching helper locals", async (t) => {
+  for (const operation of ["ask", "ask_secret", "write_env"]) for (const declaration of ["export key=42", ...["key", "prompt", "mode", "current", "input", "s", "e", "p", "rc", "value", "destination", "__wizard_ask_result", "__wizard_ask_result2"].map((name) => `declare -ix ${name}=42`)]) await t.test(`${operation}: ${declaration}`, (t) => {
+    const f = fixture(t);
+    const secret = "synthetic-private-value";
+    const call = operation === "write_env" ? `write_env TOKEN ${secret}` : `${operation} TOKEN prompt`;
+    const script = library + `\n${declaration}\nconfigure_destinations "$PWD" >/dev/null <<< yes\n${call}\n[[ "$TOKEN" == ${secret} ]]`;
+    const result = spawnSync("bash", ["-c", script], { cwd: f.root, env: { ...process.env, ENV_FILE: ".env" }, input: secret + "\n", encoding: "utf8", timeout: 10000 });
+    assert.equal(result.status, 0, result.stderr);
+    if (operation !== "ask") assert.doesNotMatch(result.stdout + result.stderr, new RegExp(secret));
+    if (operation === "write_env") assert.equal(readFileSync(join(f.root, ".env"), "utf8"), `TOKEN='${secret}'\n`);
+  });
+});
+
 test("write_env updates the caller-visible value after a successful write", (t) => {
   const f = fixture(t);
   const result = f.run(`TOKEN=synthetic-old\nwrite_env TOKEN synthetic-new\n[[ "$TOKEN" == synthetic-new ]]\nprintf 'UPDATED\\n'`);
