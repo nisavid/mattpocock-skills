@@ -6,7 +6,7 @@ One install story, one wording. `README.md`, `.changeset/*`, and every page unde
 
 Lead with installs that update themselves. Fall back to skills.sh, labelled "manual updates", only for agents that have no such install. Call a route managed only if it updates without the user running a command. Put any one-time opt-in beside its install command. Never promise "instant".
 
-Claude Code installs from its official marketplace, `claude-plugins-official`. The Codex and Copilot CLI routes use Matt Pocock's upstream `mattpocock/skills` marketplace; the VS Code route selects that upstream repository directly. Installation of this fork, Real Skills [Leashed], has not yet been qualified. Those routes reinstall only when the `version` in `plugin.json` changes. The upstream Release workflow runs `npm run version`, which copies that field from `package.json`, so users get a release when the "chore: version skills" PR merges.
+Claude Code installs from its official marketplace, `claude-plugins-official`. The Codex and Copilot CLI routes use Matt Pocock's upstream `mattpocock/skills` marketplace; the VS Code route selects that upstream repository directly. Installation of this fork, Real Skills [Leashed], has not yet been qualified. The upstream Release workflow runs `npm run version`, which copies the version from `package.json` to `.claude-plugin/plugin.json`.
 
 | Agent         | Route                            | Updates itself?                                                  |
 | ------------- | -------------------------------- | ---------------------------------------------------------------- |
