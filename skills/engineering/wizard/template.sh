@@ -29,7 +29,7 @@ ENV_FILE="${ENV_FILE:-.env}"
 _WIZARD_CONFIGURED=0
 _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
 _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
-_WIZARD_EXPORTS=()
+_WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=()
 WRITTEN_ENV=()    # successful KEY and destination records
 WRITTEN_SECRET=() # successful secret NAME and destination records
 SKIPPED=()        # things we couldn't do (e.g. gh missing)
@@ -102,20 +102,15 @@ confirm() {
 # the confirmed root.
 _wizard_helper() (
   while IFS= read -r _WIZARD_NAME; do export -n "$_WIZARD_NAME" || return 2; done < <(compgen -e)
-  for _WIZARD_LINE in "${_WIZARD_EXPORTS[@]}"; do
-    _WIZARD_DECL=${_WIZARD_LINE#declare -}
+  while IFS= read -r _WIZARD_NAME; do export -nf "$_WIZARD_NAME" || return 2; done < <(compgen -A function)
+  for _WIZARD_INDEX in "${!_WIZARD_EXPORT_NAMES[@]}"; do
+    _WIZARD_NAME=${_WIZARD_EXPORT_NAMES[$_WIZARD_INDEX]}
+    _WIZARD_DECL=$(declare -p "$_WIZARD_NAME" 2>/dev/null) || _WIZARD_DECL=""
+    _WIZARD_DECL=${_WIZARD_DECL#declare -}
     _WIZARD_ATTR=${_WIZARD_DECL%% *}
-    _WIZARD_DECL=${_WIZARD_DECL#* }
     case "$_WIZARD_ATTR" in
-      *a*|*A*) continue ;; # Bash arrays are not inherited as environment variables.
-      *r*) export "${_WIZARD_DECL%%=*}" || return 2 ;;
-      *)
-        if [[ "$_WIZARD_DECL" != *=* ]]; then
-          unset "$_WIZARD_DECL" || return 2
-          export "$_WIZARD_DECL" || return 2
-        else
-          eval "export $_WIZARD_DECL" || return 2
-        fi ;;
+      *r*) export "$_WIZARD_NAME" || return 2 ;;
+      *) export "$_WIZARD_NAME=${_WIZARD_EXPORT_VALUES[$_WIZARD_INDEX]}" || return 2 ;;
     esac
   done
   exec "$_WIZARD_RUNNER" -I -c 'import os, sys; os.fchdir(8); os.execv(sys.argv[1], sys.argv[1:])' "$@"
@@ -331,7 +326,8 @@ PY
 _revoke_destinations() {
   _WIZARD_CONFIGURED=0
   _WIZARD_ROOT=""; _WIZARD_ENV_FILE=""; _WIZARD_REPO=""
-  _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""; _WIZARD_EXPORTS=()
+  _WIZARD_RUNNER=""; _WIZARD_PYTHON=""; _WIZARD_GH=""
+  _WIZARD_EXPORT_NAMES=(); _WIZARD_EXPORT_VALUES=()
   exec 8<&- 9<&-
 }
 
@@ -385,7 +381,18 @@ configure_destinations() {
     _revoke_destinations; return 2
   }
   _WIZARD_GH=$(type -P gh) || _WIZARD_GH=""
-  while IFS= read -r _WIZARD_LINE; do _WIZARD_EXPORTS+=("$_WIZARD_LINE"); done < <(export -p)
+  while IFS= read -r _WIZARD_NAME; do
+    case "$_WIZARD_NAME" in _WIZARD_*) continue ;; esac
+    _WIZARD_DECL=$(declare -p "$_WIZARD_NAME") || { _revoke_destinations; return 2; }
+    _WIZARD_DECL=${_WIZARD_DECL#declare -}
+    _WIZARD_ATTR=${_WIZARD_DECL%% *}
+    case "$_WIZARD_ATTR" in
+      *a*|*A*) continue ;;
+      *n*) warn "Exported namerefs cannot be used as the helper environment" >&2; _revoke_destinations; return 2 ;;
+    esac
+    _WIZARD_EXPORT_NAMES+=("$_WIZARD_NAME")
+    _WIZARD_EXPORT_VALUES+=("${!_WIZARD_NAME}")
+  done < <(compgen -e)
   # Pin the displayed directory before waiting for input, without reading values.
   _WIZARD_ROOT="$root"; _WIZARD_ENV_FILE="$file"; _WIZARD_REPO="$repo"
   if ! exec 9< "$root"; then _revoke_destinations; return 2; fi
