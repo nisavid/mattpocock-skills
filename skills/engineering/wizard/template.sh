@@ -110,7 +110,13 @@ _wizard_helper() (
     case "$_WIZARD_ATTR" in
       *a*|*A*) continue ;; # Bash arrays are not inherited as environment variables.
       *r*) export "${_WIZARD_DECL%%=*}" || return 2 ;;
-      *) eval "export $_WIZARD_DECL" || return 2 ;;
+      *)
+        if [[ "$_WIZARD_DECL" != *=* ]]; then
+          unset "$_WIZARD_DECL" || return 2
+          export "$_WIZARD_DECL" || return 2
+        else
+          eval "export $_WIZARD_DECL" || return 2
+        fi ;;
     esac
   done
   exec "$@"

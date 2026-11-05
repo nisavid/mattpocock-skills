@@ -6,7 +6,7 @@ verify_and_extract() {
   /usr/bin/python3 -I - "$1" "$2" <<'PY_CHECK'
 import hashlib, pathlib, sys
 source = pathlib.Path(sys.argv[1]).read_bytes()
-if hashlib.sha256(source).hexdigest() != "3d1473a8e6c319433c82ff0486fbab0177e7293b98023cccbc4d73db96c1c545":
+if hashlib.sha256(source).hexdigest() != "fdc5f34a339692db342634f5e58c9535d171309675612c426284b9bd412f1869":
     raise SystemExit("unexpected helper digest")
 lines = source.splitlines(keepends=True)
 markers = [index for index, line in enumerate(lines) if line.startswith(b"# STAGES:")]

@@ -26,7 +26,7 @@ function fixture(t) {
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const body = args[0] === "secret" && args[1] === "set" ? fs.readFileSync(0, "utf8") : null;
-const context = process.env.WIZARD_TRACE_CONTEXT === "1" ? { home: process.env.HOME, ghConfig: process.env.GH_CONFIG_DIR, bashEnv: process.env.BASH_ENV, added: process.env.SYNTHETIC_ADDED } : undefined;
+const context = process.env.WIZARD_TRACE_CONTEXT === "1" ? { home: process.env.HOME, ghConfig: process.env.GH_CONFIG_DIR, bashEnv: process.env.BASH_ENV, added: process.env.SYNTHETIC_ADDED, token: process.env.GH_TOKEN } : undefined;
 fs.appendFileSync(process.env.WIZARD_GH_CALLS, JSON.stringify({ args, body, context }) + "\\n");
 const fail = process.env.WIZARD_GH_FAIL;
 process.exit((fail === "auth" && args[0] === "auth") || (fail === "write" && args[0] !== "auth") ? 1 : 0);
@@ -163,6 +163,15 @@ test("helper environment preserves readonly exports and literal shell syntax", (
   assert.doesNotMatch(result.stderr, /readonly variable/);
   const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
   assert.equal(call?.context?.home, literal);
+});
+
+test("a previously unset exported token stays absent from helper calls", (t) => {
+  const f = fixture(t);
+  const result = f.run('export GH_TOKEN\nconfigure_destinations "$2" example/project\nwrite_env GH_TOKEN synthetic-later-token\nset_secret DUMMY_SECRET synthetic-value\n[[ "$GH_TOKEN" == synthetic-later-token ]]', { input: "yes\n", env: { GH_TOKEN: undefined, WIZARD_TRACE_CONTEXT: "1" } });
+  succeeded(result);
+  const call = f.ghCalls().find(({ args }) => args[0] === "secret" && args[1] === "set");
+  assert.ok(call);
+  assert.equal(call.context.token, undefined);
 });
 
 test("destination preview is visible before the human confirms", async (t) => {
