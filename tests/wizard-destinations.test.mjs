@@ -575,7 +575,7 @@ set_secret DUMMY first-dummy-secret
 ENV_FILE="$2/next.env"
 configure_destinations "$2" example/second
 ${writeSecond ? "write_env DUMMY second-dummy-value\nset_secret DUMMY second-dummy-secret" : ""}
-finish`, { input: "yes\nyes\n" });
+finish`, { input: "yes\nyes\n", timeout: 15_000 });
     succeeded(result);
     const summary = result.stdout.slice(result.stdout.indexOf("✓ Setup complete")).replaceAll("\\ ", " ");
     assert.match(summary, new RegExp(`wrote ${writeSecond ? 2 : 1} value\\(s\\):`));
