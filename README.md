@@ -14,6 +14,24 @@
 
 Leashed retains the upstream distinction between skills you invoke and skills an agent may invoke on its own. Real Skills [Unleashed] (RSU) is a planned variant that will make the active skills available for agents to invoke while preserving decisions and approvals that require a person. RSU is not yet available.
 
+## Install Real Skills [Leashed]
+
+Download the archive for your provider from the [Real Skills releases](https://github.com/nisavid/real-skills/releases) page.
+
+**ChatGPT**
+
+1. Open your profile menu, then choose **Settings** and **Plugins**.
+2. Choose **Browse directory**, **Add**, and **Upload plugin archive**.
+3. Select the Agent Plugins ZIP, choose **Add plugin**, then **Install plugin**.
+
+**Claude**
+
+1. Open your profile menu, then choose **Settings**, **Customize**, and **Plugins**.
+2. Choose **Add**, then **Upload plugin**.
+3. Select the Claude ZIP and choose **Upload**.
+
+If you already have an earlier installation, keep it until you have verified the replacement. This release uses a different plugin identity, and update or coexistence behavior depends on the provider.
+
 The sections below retain Matt's introduction, installation guidance, and descriptions of the original collection. First-person references in that material refer to Matt. The installation commands are for upstream, not this fork.
 
 ## The original collection
