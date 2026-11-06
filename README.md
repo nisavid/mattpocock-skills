@@ -16,7 +16,7 @@ Leashed retains the upstream distinction between skills you invoke and skills an
 
 ## Install Real Skills [Leashed]
 
-Download the archive for your provider from the [Real Skills releases](https://github.com/nisavid/real-skills/releases) page.
+When a Real Skills [Leashed] release is available, download the archive for your provider from the [Real Skills releases](https://github.com/nisavid/real-skills/releases) page and check its release notes for qualification. If no Leashed release is listed there, its release archives are not available there.
 
 **ChatGPT**
 
@@ -30,7 +30,7 @@ Download the archive for your provider from the [Real Skills releases](https://g
 2. Choose **Add**, then **Upload plugin**.
 3. Select the Claude ZIP and choose **Upload**.
 
-If you already have an earlier installation, keep it until you have verified the replacement. This release uses a different plugin identity, and update or coexistence behavior depends on the provider.
+If you already have an earlier installation, keep it until you have verified the replacement. During verification, disable other active providers of the same skills if the provider supports it; overlapping providers can make it unclear which instructions were used. This release uses a different plugin identity, and update or coexistence behavior depends on the provider.
 
 The sections below retain Matt's introduction, installation guidance, and descriptions of the original collection. First-person references in that material refer to Matt. The installation commands are for upstream, not this fork.
 
@@ -48,7 +48,7 @@ If you want to keep up with changes to these skills, and any new ones I create, 
 
 [Sign Up To The Newsletter](https://www.aihero.dev/s/skills-newsletter)
 
-The installation instructions below install Matt Pocock's upstream [Skills for Real Engineers](https://github.com/mattpocock/skills). Installation of this fork, Real Skills [Leashed], has not yet been qualified.
+The installation instructions below install Matt Pocock's upstream [Skills for Real Engineers](https://github.com/mattpocock/skills). The release notes describe qualification of any available Real Skills [Leashed] release.
 
 ## Installation (30-second setup)
 
