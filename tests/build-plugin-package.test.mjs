@@ -16,14 +16,14 @@ function fixture(t) {
     writeFileSync(join(root, path), bytes);
   };
   const manifest = {
-    name: "mattpocock-skills", version: "1.3.1", author: { name: "Matt Pocock" },
+    name: "real-skills-leashed", version: "1.3.1", author: { name: "Matt Pocock" },
     license: "MIT", skills: ["./skills/engineering/tdd", "./skills/productivity/handoff"],
   };
   put("package.json", JSON.stringify({ version: "1.3.1" }));
   put(".claude-plugin/plugin.json", JSON.stringify(manifest, null, 2) + "\n");
   put("LICENSE", "MIT attribution fixture\n");
-  put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:{source:"local",path:"./"}}]}));
-  put(".claude-plugin/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:"./"}]}));
+  put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"real-skills-leashed",source:{source:"local",path:"./"}}]}));
+  put(".claude-plugin/marketplace.json", JSON.stringify({plugins:[{name:"real-skills-leashed",source:"./"}]}));
   put("skills/engineering/tdd/SKILL.md", "---\nname: tdd\n---\n# TDD\n");
   put("skills/engineering/tdd/agents/openai.yaml", "policy:\n  allow_implicit_invocation: false\n");
   put("skills/engineering/tdd/references/binary.bin", Buffer.from([0, 255, 13, 10]));
@@ -46,13 +46,13 @@ test("build selects original promoted directories from the repository root witho
   assert.deepEqual(snapshot(join(f.root, "skills")), sources);
   assert.deepEqual(readFileSync(join(f.root, ".claude-plugin/plugin.json")), claude);
   assert.deepEqual(readFileSync(join(f.root, "LICENSE")), license);
-  assert.throws(() => lstatSync(join(f.root, "plugins/mattpocock-skills")), { code: "ENOENT" });
+  assert.throws(() => lstatSync(join(f.root, "plugins/real-skills-leashed")), { code: "ENOENT" });
   const codex = JSON.parse(readFileSync(join(f.root, ".codex-plugin/plugin.json")));
   assert.deepEqual(codex.skills, f.manifest.skills);
-  assert.equal(codex.name, "mattpocock-skills");
+  assert.equal(codex.name, "real-skills-leashed");
   assert.equal(codex.version, "1.3.1");
-  assert.equal(codex.interface.displayName, "Skills for Real Engineers");
-  assert.equal(codex.interface.developerName, "Matt Pocock");
+  assert.equal(codex.interface.displayName, "Real Skills [Leashed]");
+  assert.equal(codex.interface.developerName, "Ivan D Vasin");
   assert.equal(readFileSync(join(f.root, "skills/misc/secret-draft/SKILL.md"), "utf8"), "Excluded draft\n");
 });
 
@@ -131,10 +131,10 @@ test("build preserves executable source bits and unrelated repository contents",
 
 test("catalogs must resolve the native repository root and retain the plugin identity", async (t) => {
   const cases = {
-    "Claude copied-tree routing": (f) => f.put(".claude-plugin/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:"./plugins/mattpocock-skills"}]})),
-    "Codex copied-tree routing": (f) => f.put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"mattpocock-skills",source:{source:"local",path:"./plugins/mattpocock-skills"}}]})),
+    "Claude copied-tree routing": (f) => f.put(".claude-plugin/marketplace.json", JSON.stringify({plugins:[{name:"real-skills-leashed",source:"./plugins/real-skills-leashed"}]})),
+    "Codex copied-tree routing": (f) => f.put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"real-skills-leashed",source:{source:"local",path:"./plugins/real-skills-leashed"}}]})),
     "changed plugin identity": (f) => f.put(".agents/plugins/marketplace.json", JSON.stringify({plugins:[{name:"renamed",source:{source:"local",path:"./"}}]})),
-    "portable discovery override": (f) => f.put("plugin.json", JSON.stringify({name:"mattpocock-skills"})),
+    "portable discovery override": (f) => f.put("plugin.json", JSON.stringify({name:"real-skills-leashed"})),
   };
   for (const [name, change] of Object.entries(cases)) await t.test(name, (t) => {
     const f = fixture(t);
@@ -163,4 +163,14 @@ test("recursive native roots reject hidden extra skills and symlinked source or 
       assert.deepEqual(snapshot(f.root), before);
     }
   });
+});
+
+
+test("native manifests identify the fork repository and credit the original author", () => {
+  for (const path of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+    const manifest = JSON.parse(readFileSync(join(repo, path), "utf8"));
+    assert.equal(manifest.repository, "https://github.com/nisavid/real-skills");
+    assert.equal(manifest.author.name, "Matt Pocock");
+    assert.equal(manifest.license, "MIT");
+  }
 });

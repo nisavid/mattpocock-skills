@@ -1,11 +1,11 @@
 {
-  "name": "mattpocock",
+  "name": "real-skills",
   "interface": {
-    "displayName": "Skills for Real Engineers"
+    "displayName": "Real Skills [Leashed]"
   },
   "plugins": [
     {
-      "name": "mattpocock-skills",
+      "name": "real-skills-leashed",
       "source": {
         "source": "local",
         "path": "./"

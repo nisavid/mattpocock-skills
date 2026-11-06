@@ -68,7 +68,7 @@ with (root / "report.json").open("x", encoding="utf-8", newline="\n") as stream:
 PYTHON
  done
 for format in agent-plugins claude; do
-  name="skills-for-real-engineers-${RELEASE_VERSION}-${format}.zip"
+  name="real-skills-leashed-${RELEASE_VERSION}-${format}.zip"
   cmp -- "$output/first/$name" "$output/second/$name"
 done
 cmp -- "$output/first/report.json" "$output/second/report.json"
@@ -84,8 +84,8 @@ Compare the ZIPs directly with the source commit, independently of the builder's
 
 Require ZIP member bytes and Unix modes to match the Git blobs: Git mode `100644` maps to `0644`, and `100755` maps to `0755`. Both ZIPs contain the source `LICENSE` bytes and mode. Every selected `SKILL.md` and `agents/openai.yaml` remains byte-identical, with paired user-invocation controls. Check the following complete layouts:
 
-- `skills-for-real-engineers-<release>-agent-plugins.zip`: root `plugin.json`, `LICENSE`, and `RELEASE.json`; each complete selected tree maps from `skills/<bucket>/<name>/` to `skills/<name>/`.
-- `skills-for-real-engineers-<release>-claude.zip`: `.claude-plugin/plugin.json`, `LICENSE`, and `RELEASE.json`; each complete selected tree retains `skills/<bucket>/<name>/`.
+- `real-skills-leashed-<release>-agent-plugins.zip`: root `plugin.json`, `LICENSE`, and `RELEASE.json`; each complete selected tree maps from `skills/<bucket>/<name>/` to `skills/<name>/`.
+- `real-skills-leashed-<release>-claude.zip`: `.claude-plugin/plugin.json`, `LICENSE`, and `RELEASE.json`; each complete selected tree retains `skills/<bucket>/<name>/`.
 
 Generated manifest and provenance files have mode `0644`. Review the generated manifests against their source JSON: the builder's fixed fork repository URL is a deliberate transform; the release version must agree with the source; the portable manifest omits Claude's `skills`, adds the schema URL, and copies the native `interface` into `extensions.com.openai.interface`. The Claude manifest copies `displayName` from the native interface. Other Claude fields remain as the builder defines. Verify `RELEASE.json` identifies the source commit, source hash, fork source version, upstream base and release versions, format, manifest transform, and complete selected-file mapping with hashes and modes. Verify its license hash. These records describe the transformation; the direct Git comparison establishes content preservation.
 
