@@ -46,5 +46,6 @@
     "./skills/productivity/to-questionnaire",
     "./skills/productivity/wait-what",
     "./skills/productivity/writing-for-agents"
-  ]
+  ],
+  "icon": "./assets/wayfinder.svg"
 }

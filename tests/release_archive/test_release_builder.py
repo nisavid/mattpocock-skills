@@ -30,7 +30,7 @@ BETA_DATA = b"\x00\xffliteral support bytes\r\n"
 LICENSE = b"MIT fixture license\nCopyright (c) 2026 Fixture Author\n"
 
 
-def source_archive(source_version="1.3.2+from.1.3.1", native_version=None):
+def source_archive(source_version="1.3.2+from.1.3.1", native_version=None, icon=False):
     roots = ["./skills/engineering/alpha", "./skills/productivity/beta"]
     manifest = {
         "name": "mattpocock-skills",
@@ -48,6 +48,9 @@ def source_archive(source_version="1.3.2+from.1.3.1", native_version=None):
     })
     if native_version is not None:
         native["version"] = native_version
+    if icon:
+        manifest["icon"] = "./assets/wayfinder.svg"
+        native["interface"].update({"logo": manifest["icon"], "composerIcon": manifest["icon"]})
     files = {
         ".claude-plugin/plugin.json": (json.dumps(manifest).encode(), 0o644),
         ".codex-plugin/plugin.json": (json.dumps(native).encode(), 0o644),
@@ -60,6 +63,8 @@ def source_archive(source_version="1.3.2+from.1.3.1", native_version=None):
         "skills/productivity/beta/agents/openai.yaml": (BETA_AGENT, 0o644),
         "skills/productivity/beta/assets/data.bin": (BETA_DATA, 0o644),
     }
+    if icon:
+        files["assets/wayfinder.svg"] = (b'<svg xmlns="http://www.w3.org/2000/svg"/>', 0o644)
     root = "mattpocock-skills-" + REVISION
     directories = {root}
     for path in files:
@@ -184,3 +189,21 @@ def test_build_keeps_release_identity_across_source_and_archives():
             assert manifest["version"] == version
             assert manifest["repository"] == "https://github.com/nisavid/real-skills"
             assert json.loads(archive.read("RELEASE.json"))["source_version"] == version
+
+
+def test_build_packages_icon_bytes_and_references_for_both_providers():
+    from release_builder import build
+
+    source = source_archive(icon=True)
+    archives, _ = build(source, hashlib.sha256(source).hexdigest(), REVISION,
+                        "1.3.1", "1.3.2+from.1.3.1")
+    for fmt, manifest_path in (("agent-plugins", "plugin.json"),
+                               ("claude", ".claude-plugin/plugin.json")):
+        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-1.3.2+from.1.3.1-{fmt}.zip"])) as archive:
+            assert archive.read("assets/wayfinder.svg") == b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+            manifest = json.loads(archive.read(manifest_path))
+            if fmt == "claude":
+                assert manifest["icon"] == "./assets/wayfinder.svg"
+            else:
+                interface = manifest["extensions"]["com.openai"]["interface"]
+                assert interface["logo"] == interface["composerIcon"] == "./assets/wayfinder.svg"

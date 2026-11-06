@@ -164,3 +164,46 @@ test("recursive native roots reject hidden extra skills and symlinked source or 
     }
   });
 });
+
+test("build projects a packaged icon into Codex interface metadata", (t) => {
+  const f = fixture(t);
+  f.manifest.icon = "./assets/wayfinder.svg";
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  f.put("assets/wayfinder.svg", '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  const native = JSON.parse(readFileSync(join(f.root, ".codex-plugin/plugin.json")));
+  assert.equal(native.interface.logo, "./assets/wayfinder.svg");
+  assert.equal(native.interface.composerIcon, "./assets/wayfinder.svg");
+  assert.equal(f.run("--check").status, 0);
+});
+
+test("build rejects a missing packaged icon before changing the native manifest", (t) => {
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  f.manifest.icon = "./assets/missing.svg";
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  const before = snapshot(f.root);
+  assert.notEqual(f.run().status, 0);
+  assert.deepEqual(snapshot(f.root), before);
+});
+
+test("build refuses unsafe or symlinked icon paths without writing", async (t) => {
+  const cases = {
+    "path escape": (f) => { f.manifest.icon = "./assets/../LICENSE"; },
+    "symbolic link": (f) => {
+      f.manifest.icon = "./assets/link.svg";
+      mkdirSync(join(f.root, "assets"));
+      symlinkSync(join(f.root, "LICENSE"), join(f.root, "assets/link.svg"));
+    },
+  };
+  for (const [name, change] of Object.entries(cases)) await t.test(name, (t) => {
+    const f = fixture(t);
+    assert.equal(f.run().status, 0);
+    change(f);
+    f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+    const before = snapshot(f.root);
+    assert.notEqual(f.run().status, 0);
+    assert.deepEqual(snapshot(f.root), before);
+  });
+});
