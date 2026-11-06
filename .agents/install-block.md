@@ -2,11 +2,29 @@
 
 One install story, one wording. `README.md`, `.changeset/*`, and every page under `docs/` must say **this** and nothing else. Change it here first, then propagate.
 
+## Install Real Skills [Leashed]
+
+When a Real Skills [Leashed] release is available, download the archive for your provider from the [Real Skills releases](https://github.com/nisavid/real-skills/releases) page and check its release notes for qualification. If no Leashed release is listed there, its release archives are not available there.
+
+**ChatGPT**
+
+1. Open your profile menu, then choose **Settings** and **Plugins**.
+2. Choose **Browse directory**, **Add**, and **Upload plugin archive**.
+3. Select the Agent Plugins ZIP, choose **Add plugin**, then **Install plugin**.
+
+**Claude**
+
+1. Open your profile menu, then choose **Settings**, **Customize**, and **Plugins**.
+2. Choose **Add**, then **Upload plugin**.
+3. Select the Claude ZIP and choose **Upload**.
+
+If you already have an earlier installation, keep it until you have verified the replacement. During verification, disable other active providers of the same skills if the provider supports it; overlapping providers can make it unclear which instructions were used. This release uses a different plugin identity, and update or coexistence behavior depends on the provider.
+
 ## Managed installs first
 
 Lead with installs that update themselves. Fall back to skills.sh, labelled "manual updates", only for agents that have no such install. Call a route managed only if it updates without the user running a command. Put any one-time opt-in beside its install command. Never promise "instant".
 
-Claude Code installs from its official marketplace, `claude-plugins-official`. The Codex and Copilot CLI routes use Matt Pocock's upstream `mattpocock/skills` marketplace; the VS Code route selects that upstream repository directly. Installation of this fork, Real Skills [Leashed], has not yet been qualified. The upstream Release workflow runs `npm run version`, which copies the version from `package.json` to `.claude-plugin/plugin.json`.
+Claude Code installs from its official marketplace, `claude-plugins-official`. The Codex and Copilot CLI routes use Matt Pocock's upstream `mattpocock/skills` marketplace; the VS Code route selects that upstream repository directly. The release notes describe qualification of any available Real Skills [Leashed] release. The upstream Release workflow runs `npm run version`, which copies the version from `package.json` to `.claude-plugin/plugin.json`.
 
 | Agent         | Route                            | Updates itself?                                                  |
 | ------------- | -------------------------------- | ---------------------------------------------------------------- |

@@ -1,6 +1,6 @@
 {
   "name": "real-skills-leashed",
-  "version": "1.3.2",
+  "version": "1.3.4+from.1.3.2",
   "private": true,
   "description": "A lightly revised and repackaged fork of Matt Pocock's Skills for Real Engineers.",
   "repository": {
