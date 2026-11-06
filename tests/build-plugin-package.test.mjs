@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, readlinkSync, lstatSync, rmSync, writeFileSync, copyFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -176,6 +177,17 @@ test("build projects a packaged icon into Codex interface metadata", (t) => {
   assert.equal(native.interface.logo, "./assets/wayfinder.svg");
   assert.equal(native.interface.composerIcon, "./assets/wayfinder.svg");
   assert.equal(f.run("--check").status, 0);
+});
+
+test("build retains the reviewed icon derivative bytes", (t) => {
+  const f = fixture(t);
+  f.manifest.icon = "./assets/wayfinder.svg";
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  const icon = readFileSync(join(repo, "assets/wayfinder.svg"));
+  f.put("assets/wayfinder.svg", icon);
+  assert.equal(f.run().status, 0);
+  const result = readFileSync(join(f.root, "assets/wayfinder.svg"));
+  assert.equal(createHash("sha256").update(result).digest("hex"), "7ca7b400fe3297f0ae20f04d897d967154160d867eca9b6d225ced9d33f54fe7");
 });
 
 test("build rejects a missing packaged icon before changing the native manifest", (t) => {
