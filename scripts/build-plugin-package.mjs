@@ -28,6 +28,10 @@ for (const path of [".claude-plugin/plugin.json", ".claude-plugin/marketplace.js
 for (const bucket of ["engineering", "productivity"]) requirePath(`skills/${bucket}`, true);
 const manifestBytes = readFileSync(join(repo, ".claude-plugin/plugin.json"));
 const manifest = JSON.parse(manifestBytes);
+if (manifest.icon !== undefined) {
+  if (typeof manifest.icon !== "string" || !/^\.\/assets\/[a-zA-Z0-9_-]+\.(?:svg|png|jpg|jpeg|webp)$/.test(manifest.icon)) throw new Error("Invalid plugin icon path.");
+  requirePath(manifest.icon.slice(2), false);
+}
 const { version } = JSON.parse(readFileSync(join(repo, "package.json")));
 if (manifest.name !== "mattpocock-skills" || manifest.version !== version) throw new Error("Source plugin identity or version does not match package.json.");
 if (!Array.isArray(manifest.skills) || !manifest.skills.length) throw new Error("Source manifest must list promoted skills.");
@@ -87,6 +91,7 @@ const expected = Buffer.from(JSON.stringify({
     developerName: "Matt Pocock",
     category: "Developer Tools",
     capabilities: ["Interactive"],
+    ...(manifest.icon ? { logo: manifest.icon, composerIcon: manifest.icon } : {}),
   },
 }, null, 2) + "\n");
 const exists = requirePath(outputPath, false, true);

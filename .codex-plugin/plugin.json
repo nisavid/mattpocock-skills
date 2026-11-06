@@ -47,6 +47,7 @@
     "./skills/productivity/wait-what",
     "./skills/productivity/writing-for-agents"
   ],
+  "icon": "./assets/wayfinder.svg",
   "interface": {
     "displayName": "Skills for Real Engineers",
     "shortDescription": "Skills by Matt Pocock",
@@ -54,6 +55,8 @@
     "category": "Developer Tools",
     "capabilities": [
       "Interactive"
-    ]
+    ],
+    "logo": "./assets/wayfinder.svg",
+    "composerIcon": "./assets/wayfinder.svg"
   }
 }
