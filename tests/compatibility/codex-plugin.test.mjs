@@ -49,7 +49,7 @@ async function readPlugin(root) {
   try {
     const initialized = await request(1, "initialize", { clientInfo: { name: "plugin-compatibility-test", version: "1.0.0" }, capabilities: { experimentalApi: true } });
     child.stdin.write(JSON.stringify({ method: "initialized", params: {} }) + "\n");
-    const result = await request(2, "plugin/read", { marketplacePath: join(root, ".agents/plugins/marketplace.json"), pluginName: "mattpocock-skills" });
+    const result = await request(2, "plugin/read", { marketplacePath: join(root, ".agents/plugins/marketplace.json"), pluginName: "real-skills-leashed" });
     return { plugin: result.plugin, userAgent: initialized.userAgent };
   } finally {
     lines.close();
@@ -83,11 +83,11 @@ function fixture(t) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), bytes);
   }
-  put(".agents/plugins/marketplace.json", JSON.stringify({ name: "fixture", plugins: [{ name: "mattpocock-skills", source: { source: "local", path: "./" } }] }));
+  put(".agents/plugins/marketplace.json", JSON.stringify({ name: "fixture", plugins: [{ name: "real-skills-leashed", source: { source: "local", path: "./" } }] }));
   for (const [bucket, name] of [["engineering", "alpha"], ["productivity", "beta"], ["misc", "unpromoted"]]) {
     put(`skills/${bucket}/${name}/SKILL.md`, `---\nname: ${name}\ndescription: A compatibility control.\n---\n# ${name}\n`);
   }
-  const manifest = { name: "mattpocock-skills", skills: ["./skills/engineering", "./skills/productivity"], interface: { displayName: "Compatibility fixture", shortDescription: "Native discovery controls" } };
+  const manifest = { name: "real-skills-leashed", skills: ["./skills/engineering", "./skills/productivity"], interface: { displayName: "Compatibility fixture", shortDescription: "Native discovery controls" } };
   const save = () => put(".codex-plugin/plugin.json", JSON.stringify(manifest));
   save();
   return { root, manifest, save, put };
@@ -95,8 +95,8 @@ function fixture(t) {
 
 function assertFixtureSkills(plugin, root) {
   assert.deepEqual(plugin.skills.map(({ name, path }) => ({ name, path })).sort((a, b) => a.name.localeCompare(b.name)), [
-    { name: "mattpocock-skills:alpha", path: join(root, "skills/engineering/alpha/SKILL.md") },
-    { name: "mattpocock-skills:beta", path: join(root, "skills/productivity/beta/SKILL.md") },
+    { name: "real-skills-leashed:alpha", path: join(root, "skills/engineering/alpha/SKILL.md") },
+    { name: "real-skills-leashed:beta", path: join(root, "skills/productivity/beta/SKILL.md") },
   ]);
 }
 
@@ -120,7 +120,7 @@ test("the exposure assertion detects a manifest that includes an unpromoted buck
   f.manifest.skills = ["./skills"];
   f.save();
   const { plugin } = await readPlugin(f.root);
-  assert.deepEqual(plugin.skills.map(({ name }) => name).sort(), ["mattpocock-skills:alpha", "mattpocock-skills:beta", "mattpocock-skills:unpromoted"]);
+  assert.deepEqual(plugin.skills.map(({ name }) => name).sort(), ["real-skills-leashed:alpha", "real-skills-leashed:beta", "real-skills-leashed:unpromoted"]);
   assert.throws(() => assertFixtureSkills(plugin, f.root), assert.AssertionError);
 });
 
@@ -129,7 +129,7 @@ test("the exposure assertion detects a manifest that omits a selected bucket", {
   f.manifest.skills = ["./skills/engineering"];
   f.save();
   const { plugin } = await readPlugin(f.root);
-  assert.deepEqual(plugin.skills.map(({ name }) => name), ["mattpocock-skills:alpha"]);
+  assert.deepEqual(plugin.skills.map(({ name }) => name), ["real-skills-leashed:alpha"]);
   assert.throws(() => assertFixtureSkills(plugin, f.root), assert.AssertionError);
 });
 

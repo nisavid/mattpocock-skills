@@ -233,7 +233,7 @@ def build(raw, expected_sha256, revision, base, release):
     native = unique_json(source[".codex-plugin/plugin.json"][0])
     package = unique_json(source["package.json"][0])
     require(
-        claude.get("name") == native.get("name") == "mattpocock-skills",
+        claude.get("name") == native.get("name") == "real-skills-leashed",
         "source plugin name mismatch",
     )
     source_version = package["version"]
@@ -400,7 +400,7 @@ def build(raw, expected_sha256, revision, base, release):
         require(archive_bytes == encode_zip(files), "nondeterministic rebuild")
         actual = verify_zip(archive_bytes, files)
         links = verify_links(actual)
-        filename = f"skills-for-real-engineers-{release}-{format_name}.zip"
+        filename = f"real-skills-leashed-{release}-{format_name}.zip"
         outputs[filename] = archive_bytes
         report["archives"][filename] = {
             "sha256": digest(archive_bytes),

@@ -33,9 +33,10 @@ LICENSE = b"MIT fixture license\nCopyright (c) 2026 Fixture Author\n"
 def source_archive(source_version="1.3.2+from.1.3.1", native_version=None):
     roots = ["./skills/engineering/alpha", "./skills/productivity/beta"]
     manifest = {
-        "name": "mattpocock-skills",
+        "name": "real-skills-leashed",
         "version": source_version,
         "description": "Synthetic release fixture",
+        "repository": "https://github.com/nisavid/real-skills",
         "author": {"name": "Fixture Author"},
         "license": "MIT",
         "skills": roots,
@@ -91,7 +92,7 @@ def test_build_separates_source_version_from_upstream_base():
         ("agent-plugins", "plugin.json"),
         ("claude", ".claude-plugin/plugin.json"),
     ):
-        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-1.3.3+from.1.3.1-{fmt}.zip"])) as archive:
+        with zipfile.ZipFile(io.BytesIO(archives[f"real-skills-leashed-1.3.3+from.1.3.1-{fmt}.zip"])) as archive:
             assert json.loads(archive.read(manifest_path))["version"] == "1.3.3+from.1.3.1"
             provenance = json.loads(archive.read("RELEASE.json"))
             assert provenance["base_version"] == "1.3.1"
@@ -109,7 +110,7 @@ def test_build_release_versions_in_both_manifests():
         ("agent-plugins", "plugin.json"),
         ("claude", ".claude-plugin/plugin.json"),
     ):
-        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-1.3.2+from.1.3.1-{fmt}.zip"])) as archive:
+        with zipfile.ZipFile(io.BytesIO(archives[f"real-skills-leashed-1.3.2+from.1.3.1-{fmt}.zip"])) as archive:
             assert json.loads(archive.read(manifest_path))["version"] == "1.3.2+from.1.3.1"
 
 
@@ -121,7 +122,7 @@ def test_build_preserves_selected_files_in_both_release_layouts():
         source, hashlib.sha256(source).hexdigest(), REVISION, "1.3.1", "1.3.2+from.1.3.1"
     )
     expected_archives = {
-        "skills-for-real-engineers-1.3.2+from.1.3.1-agent-plugins.zip": (
+        "real-skills-leashed-1.3.2+from.1.3.1-agent-plugins.zip": (
             "plugin.json",
             {
                 "skills/alpha/SKILL.md": (ALPHA_SKILL, 0o644),
@@ -132,7 +133,7 @@ def test_build_preserves_selected_files_in_both_release_layouts():
                 "skills/beta/assets/data.bin": (BETA_DATA, 0o644),
             },
         ),
-        "skills-for-real-engineers-1.3.2+from.1.3.1-claude.zip": (
+        "real-skills-leashed-1.3.2+from.1.3.1-claude.zip": (
             ".claude-plugin/plugin.json",
             {
                 "skills/engineering/alpha/SKILL.md": (ALPHA_SKILL, 0o644),
@@ -179,8 +180,10 @@ def test_build_keeps_release_identity_across_source_and_archives():
         ("agent-plugins", "plugin.json"),
         ("claude", ".claude-plugin/plugin.json"),
     ):
-        with zipfile.ZipFile(io.BytesIO(archives[f"skills-for-real-engineers-{version}-{fmt}.zip"])) as archive:
+        with zipfile.ZipFile(io.BytesIO(archives[f"real-skills-leashed-{version}-{fmt}.zip"])) as archive:
             manifest = json.loads(archive.read(manifest_path))
             assert manifest["version"] == version
             assert manifest["repository"] == "https://github.com/nisavid/real-skills"
+            assert manifest["author"] == {"name": "Fixture Author"}
+            assert manifest["license"] == "MIT"
             assert json.loads(archive.read("RELEASE.json"))["source_version"] == version
