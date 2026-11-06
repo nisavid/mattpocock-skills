@@ -8,7 +8,15 @@
   </a>
 </p>
 
-# Skills For Real Engineers
+# Real Skills [Leashed]
+
+[Matt Pocock's Skills for Real Engineers](https://github.com/mattpocock/skills) is a collection of agent skills for planning, building, debugging, reviewing, and documenting software. Real Skills [Leashed] (RSL) is a lightly revised and repackaged fork of Matt's collection, with focused fixes for packaging, safety, and reliability.
+
+Leashed retains the upstream distinction between skills you invoke and skills an agent may invoke on its own. Real Skills [Unleashed] (RSU) is a planned variant that will make the active skills available for agents to invoke while preserving decisions and approvals that require a person. RSU is not yet available.
+
+The sections below retain Matt's introduction, installation guidance, and descriptions of the original collection. First-person references in that material refer to Matt. The installation commands are for upstream, not this fork.
+
+## The original collection
 
 [![skills.sh](https://skills.sh/b/mattpocock/skills)](https://skills.sh/mattpocock/skills)
 
