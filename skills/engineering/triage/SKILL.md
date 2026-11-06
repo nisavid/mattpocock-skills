@@ -1,7 +1,6 @@
 ---
 name: triage
-description: Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs.
-disable-model-invocation: true
+description: "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs. Use when assessing an issue or external pull request for the appropriate triage state."
 ---
 
 # Triage
@@ -45,13 +44,13 @@ For a PR, the same states read against the attached code: `ready-for-agent` mean
 
 Every triaged issue should carry exactly one category role and one state role. If state roles conflict, flag it and ask the maintainer before doing anything else.
 
-These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+These are canonical role names. The actual label strings used in the issue tracker may differ. The mapping should have been provided to you. If not, call the Skill tool with "setup-matt-pocock-skills" when governing instructions permit; otherwise tell the user to run `/setup-matt-pocock-skills`.
 
 State transitions: an unlabeled issue normally goes to `needs-triage` first; from there it moves to `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`. `needs-info` returns to `needs-triage` once the reporter replies. The maintainer can override at any time; flag transitions that look unusual and ask before proceeding.
 
 ## Invocation
 
-The maintainer invokes `/triage` and describes what they want in natural language. Interpret the request and act. Examples:
+The maintainer may invoke `/triage` and describe what they want in natural language. The agent may also invoke it when triage is needed and governing instructions permit. Interpret the request and act. Examples:
 
 - "Show me anything that needs my attention"
 - "Let's look at #42" (issue or PR)

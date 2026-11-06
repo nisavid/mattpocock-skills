@@ -6,7 +6,7 @@ It recommends and stops. It does not grill, write a [spec](https://www.aihero.de
 
 ## When to reach for it
 
-You invoke this by typing `/ask-matt`; the agent won't reach for it on its own.
+Type `/ask-matt`, or the agent can invoke it when the task fits.
 
 | Your situation | What the router gives back |
 | --- | --- |
@@ -54,7 +54,7 @@ People keep asking for one in the README. This skill is that list. A static tabl
 
 **It told me half the skills aren't installed.**
 
-This is a known bug, and it is not fixed. Most of the skills the router routes you through set `disable-model-invocation: true`, which means the harness leaves them out of the skill list it injects into the agent's context. The agent reads that list as exhaustive and reports them missing. In one reported session, it declared the whole spec-and-tickets flow absent and rerouted to bare `/grilling` and `/tdd`. Sixteen of the plugin's twenty-seven skills carry the flag, so this is the common case rather than an edge. They are installed. Type the slash command anyway, or check `.claude-plugin/plugin.json`, which is the authority on what is present.
+Check that the expected plugin and its skills are installed and enabled in the current harness. The plugin manifest lists the promoted skills; a manifest alone does not establish that the current session loaded them.
 
 **It described a skill's behaviour, and the skill doesn't do that.**
 

@@ -6,7 +6,7 @@ It reads the tickets as a **task graph**, not a list. Blocking edges decide what
 
 ## When to reach for it
 
-You invoke this by typing `/implement-spec`, and the agent won't reach for it on its own.
+Type `/implement-spec`, or the agent can invoke it when the task fits.
 
 | Your situation | Reach for |
 | --- | --- |

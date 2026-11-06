@@ -1,12 +1,11 @@
 ---
 name: implement-spec
-description: "Implement the result of /to-spec and /to-tickets in code."
-disable-model-invocation: true
+description: "Implement the result of /to-spec and /to-tickets in code. Use when implementing a spec as a dependency-aware graph of tickets."
 ---
 
 You have been provided a spec. This spec should have tickets associated with it, describing how to implement the spec.
 
-The issue tracker should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+The issue tracker should have been provided to you. If not, call the Skill tool with "setup-matt-pocock-skills" when governing instructions permit; otherwise tell the user to run `/setup-matt-pocock-skills`.
 
 The goal is the entire spec implemented on a single **integration branch**, with every ticket resolved the way the issue tracker closes work.
 
