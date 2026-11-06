@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -97,7 +97,17 @@ if (check) {
   }
   console.log(`Native manifests select ${manifest.skills.length} original promoted skill directories.`);
 } else {
-  mkdirSync(join(repo, ".codex-plugin"), { recursive: true });
-  writeFileSync(join(repo, outputPath), expected);
+  const output = join(repo, outputPath);
+  mkdirSync(dirname(output), { recursive: true });
+  const mode = exists ? lstatSync(output).mode & 0o7777 : null;
+  const staging = mkdtempSync(join(dirname(output), ".plugin-"));
+  try {
+    const stagedOutput = join(staging, "plugin.json");
+    writeFileSync(stagedOutput, expected);
+    if (mode !== null) chmodSync(stagedOutput, mode);
+    renameSync(stagedOutput, output);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
   console.log(`Updated ${outputPath} for ${manifest.skills.length} original promoted skill directories.`);
 }
