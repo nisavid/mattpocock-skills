@@ -83,6 +83,81 @@ test("check detects native manifest drift without writing and rebuild repairs on
   assert.equal(f.run("--check").status, 0);
 });
 
+test("successful regeneration preserves the existing native manifest mode and updates its content", (t) => {
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  const destination = join(f.root, ".codex-plugin/plugin.json");
+  const before = readFileSync(destination);
+  chmodSync(destination, 0o640);
+  f.manifest.description = "updated metadata with preserved permissions";
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(lstatSync(destination).mode & 0o7777, 0o640);
+  const after = readFileSync(destination);
+  assert.notDeepEqual(after, before);
+  assert.equal(JSON.parse(after).description, f.manifest.description);
+});
+
+test("failed output write preserves the existing native manifest", (t) => {
+  if (process.platform !== "linux") return t.skip("requires Linux file-size limit");
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  const destination = join(f.root, ".codex-plugin/plugin.json");
+  const before = readFileSync(destination);
+  f.manifest.description = "x".repeat(8192);
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  const result = spawnSync("bash", ["-c", 'trap "" XFSZ; ulimit -f 1; exec "$@"', "limited-build", process.execPath, join(f.root, "scripts/build-plugin-package.mjs")], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /EFBIG/);
+  assert.deepEqual(readFileSync(destination), before);
+  assert.deepEqual(readdirSync(join(f.root, ".codex-plugin")), ["plugin.json"]);
+});
+
+test("failed replacement preserves the existing native manifest", (t) => {
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  const destination = join(f.root, ".codex-plugin/plugin.json");
+  const before = readFileSync(destination);
+  f.manifest.description = "updated metadata";
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  f.put("fail-rename.cjs", `const fs = require("node:fs");
+fs.renameSync = () => { const error = new Error("injected replacement failure"); error.code = "EIO"; throw error; };
+require("node:module").syncBuiltinESMExports();
+`);
+  const result = spawnSync(process.execPath, ["--require", join(f.root, "fail-rename.cjs"), join(f.root, "scripts/build-plugin-package.mjs")], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /injected replacement failure/);
+  assert.deepEqual(readFileSync(destination), before);
+  assert.deepEqual(readdirSync(join(f.root, ".codex-plugin")), ["plugin.json"]);
+});
+
+test("failed generation leaves no partial manifest when the destination is absent", async (t) => {
+  await t.test("replacement fails", (t) => {
+    const f = fixture(t);
+    f.put("fail-rename.cjs", `const fs = require("node:fs");
+fs.renameSync = () => { throw new Error("injected replacement failure"); };
+require("node:module").syncBuiltinESMExports();
+`);
+    const result = spawnSync(process.execPath, ["--require", join(f.root, "fail-rename.cjs"), join(f.root, "scripts/build-plugin-package.mjs")], { encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /injected replacement failure/);
+    assert.throws(() => lstatSync(join(f.root, ".codex-plugin/plugin.json")), { code: "ENOENT" });
+    assert.deepEqual(readdirSync(join(f.root, ".codex-plugin")), []);
+  });
+  await t.test("write fails", (t) => {
+    if (process.platform !== "linux") return t.skip("requires Linux file-size limit");
+    const f = fixture(t);
+    f.manifest.description = "x".repeat(8192);
+    f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+    const result = spawnSync("bash", ["-c", 'trap "" XFSZ; ulimit -f 1; exec "$@"', "limited-build", process.execPath, join(f.root, "scripts/build-plugin-package.mjs")], { encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /EFBIG/);
+    assert.throws(() => lstatSync(join(f.root, ".codex-plugin/plugin.json")), { code: "ENOENT" });
+    assert.deepEqual(readdirSync(join(f.root, ".codex-plugin")), []);
+  });
+});
+
 test("invalid promoted inventory is rejected before changing the native manifest", async (t) => {
   const cases = {
     "omitted promoted skill": (f) => f.manifest.skills.pop(),
