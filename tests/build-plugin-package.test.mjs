@@ -83,6 +83,22 @@ test("check detects native manifest drift without writing and rebuild repairs on
   assert.equal(f.run("--check").status, 0);
 });
 
+test("successful regeneration preserves the existing native manifest mode and updates its content", (t) => {
+  const f = fixture(t);
+  assert.equal(f.run().status, 0);
+  const destination = join(f.root, ".codex-plugin/plugin.json");
+  const before = readFileSync(destination);
+  chmodSync(destination, 0o640);
+  f.manifest.description = "updated metadata with preserved permissions";
+  f.put(".claude-plugin/plugin.json", JSON.stringify(f.manifest));
+  const result = f.run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(lstatSync(destination).mode & 0o7777, 0o640);
+  const after = readFileSync(destination);
+  assert.notDeepEqual(after, before);
+  assert.equal(JSON.parse(after).description, f.manifest.description);
+});
+
 test("failed output write preserves the existing native manifest", (t) => {
   if (process.platform !== "linux") return t.skip("requires Linux file-size limit");
   const f = fixture(t);
